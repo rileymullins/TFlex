@@ -29,6 +29,7 @@
  ![Picture1](https://github.com/user-attachments/assets/dd45c0cc-8132-4d65-af3a-1b24befb073c)
 
 ## Pipeline steps
+### Phase 1: Loading, Correcting, and Annotating All Reads
 1. **Input loading and barcode parsing:**  
    - Reads all qbed/bed files and parses the `name` field into `library_name`, `sample_barcode_raw`, and `srt_bc`.
 2. **Barcode correction:**  
@@ -38,20 +39,24 @@
 4. **Per-sample partitioning:**  
    - Saves all rows of each `sample_name` as a `.parquet` file for efficient downstream processing.
    - The .parquet of each sample is saved in the `<output_dir>/collapsed_per_sample directory` within the specified output directory.
+     
+### Phase 2: Calling Peaks on Sample Data
 5. **Fragment-based peak calling:**  
    - For each sample, loads each partitioned `.parquet` file and merges rows identical in all fields except `sample_barcode_raw` and sums their reads.
    - Then peaks are called with pycallingcards on these fragments, which may or may not be associated with more than one SRT barcode.
    - The goal here is to define regions in the genome of at least on transpsoson insertion that is supported by at least 5 differentially fragmented molecules to remove noise.
-6. **Fragments-to-fragment based peak mapping within sample**
+6. **Fragments-to-fragment-based peak mapping (intersection)**
    - The deduplicated fragments of each sample are intersected to their own peak set to map the fragments to the peaks.
    - This is required for step 7.
 7. **SRT barcode-based peak refinement:**
    - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
    - This step will also count the number of unique transposon insertions (equal to unique SRT barcodes) in the fragment-based peak. The unique transposon insertions acts as the signal of TF binding.
    - The peak set of each sample is saved in the `<output_dir>/sample_peaks directory` within the specified output directory as a .parquet file.
+
+### Phase 3: Generating Consensus Peaks and Final Output
 8. **Consensus peak generation:**  
    - Merges sample-specific peaks to produce consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
-9. **Sample peak-to-consensus peak mapping:**  
+9. **Sample peak set-to-consensus peak mapping (intersection):**  
    - Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
 10. **Output aggregation:**  
    - Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
