@@ -65,7 +65,7 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
   Tab-separated table describing all columns in `final_results.tsv`.
 - `~/collapsed_per_sample/sample.parquet`
   The subset of the qbed rows corresponding to the sample_name in the annotation file.
-- '~/sample_peaks/sample_peaks.parquet'
+- `~/sample_peaks/sample_peaks.parquet`
   The peaks called after SRT barcode deduplication and defining the SRT barcode peak boundaries for each sample_name in the annotation file.
 - `pipeline.log`  
   Log file of all steps, warnings, and errors.
