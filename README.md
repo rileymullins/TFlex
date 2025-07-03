@@ -37,14 +37,14 @@
    - Joins corrected reads with the annotation file, assigning `sample_name` and `group_name`.
 4. **Per-sample partitioning:**  
    - Collapses any duplicate rows for each sample, summing the reads, and saved as a `.parquet` file for efficient downstream processing.
-   - The .parquet of each sample is saved in the `~/collapsed_per_sample directory` within the specified output directory.
+   - The .parquet of each sample is saved in the `<output_dir>/collapsed_per_sample directory` within the specified output directory.
 5. **Fragment-based peak calling:**  
    - For each sample, calls peaks with pycallingcards on the fragments, which may or may not be associated with more than one SRT barcode.
    - The goal here is to define regions in the genome of at least on transpsoson insertion that is supported by at least 5 differentially fragmented molecules to remove noise.
 6. **SRT barcode-based peak refinement:**
    - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
    - This step will also count the number of unique transposon insertions (equal to unique SRT barcodes) in the fragment-based peak. The unique transposon insertions acts as the signal of TF binding.
-   - The peak set of each sample is saved in the `~/sample_peaks directory` within the specified output directory as a .parquet file.
+   - The peak set of each sample is saved in the `<output_dir>/sample_peaks directory` within the specified output directory as a .parquet file.
 7. **Consensus peak generation:**  
    - Merges sample-specific peaks to produce consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
 8. **Sample peak-to-consensus peak mapping:**  
