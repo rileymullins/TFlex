@@ -1,4 +1,4 @@
-# multiplex_srt_seq_to_tf_binding
+# multiplex_srt_seq_to_tf_binding.py
 - Convert aligned sequencing data of multiplexed self-reporting transposon sequencing data into putative transcription factor binding sites.
 - The output of this script is used in DESeq2 to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
 
