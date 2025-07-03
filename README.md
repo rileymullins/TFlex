@@ -31,7 +31,7 @@ This pipeline processes multiplexed self-reporting transposon data to identify t
 ### Example input file row
 
 ```
-chr    start    end    reads    strand    name
+chr    start    end    reads    strand        name
 chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_barcode]
 ```
 
