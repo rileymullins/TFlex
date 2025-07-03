@@ -38,7 +38,8 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
 ## Interpretation of 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
 - The R2 read end is reported in the input file.
 - The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
-- By convention of the alignemnt pipeline, **'end' coordinate** for a **'+'** strand row is the true end of the read, and the **'start' coordinate** for a **'-'** strand row is the true end of the read
+- By convention of the alignemnt pipeline, **'end' coordinate** for a **'+'** strand row is the true end of the read, and the **'start' coordinate** for a **'-'** strand row is the true end of the read.
+- Reads that hit the transposon are truncated to the last base prior to beginning of the transposon.
 
 - In summary:
   - For a **'+'** strand row in the qbed:
@@ -56,15 +57,15 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
 ## Key logic for converting the fragment-based peaks to SRT barcode-based peak boundaries
 - **Fragment-based peaks:** Peaks called from the initial input qbed file where every row represents one uniquely fragmented molecule for which the read ended at a different position.
 - **SRT barcode-based peaks:** Refined fragment-based peaks where the start and end coordinates are defined based on the unique SRT barcode positions within the peak.
-The minimum position of the SRT barcode across all its fragments in the peak is the closest to the transposon.
-
-**–** strand in the input file means reads move 5’3’.
-The maximum position of the SRT barcode across all its fragments in the peak is the closest to the transposon.
-
-Therefore, SRT barcode peak start and end are defined as follows:
-Peak start = minimum of the minimum(+ strand fragment coordinate) and maximum(- strand fragment coordinate)
-Peak end = maximum of the minimum(+strand fragment coordinate) and maximum(-strand fragment coordinate)
-
+  
+  - Peak start = the **smallest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
+    - This represents the most **upstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
+  - Peak end = the **largest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
+    - This represents the most **downstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
+  
+- Note that in both instances, the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments are used.
+  - This is because these value represent the most proximal position of all fragments of a given SRT barcode to the transposon.
+  - It is the best approximation of the true transposon insertion site if the read does not make contact with the transposon.
 
 
 ### Features
