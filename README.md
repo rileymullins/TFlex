@@ -108,11 +108,11 @@ bedtools --version
 
 ### Default parameters command line
 ```bash
-python ccaller_to_assign_reproducible_peaks_with_full_pan_barcode_consensus_peaks_and_umi_based_peak_boundaries.py \
+python multiplex_srt_seq_to_tf_binding.py \
   --input_dir /path/to/qbed_files \
   --output_dir /path/to/results \
   --annotation_file /path/to/annotation_file.tsv \
-  --workers 8 \
+  --workers 10 \
   --sample_barcode_dist_threshold 2 \
   --srt_bc_dist_threshold 1 \
   --min_rows_threshold 50000 \
@@ -175,7 +175,7 @@ min_insertions, minlen, extend, maxbetween, minnum, lam_win_size all refer to th
 - The `name` field should be formatted as:  
   `library_name/sample_barcode/srt_barcode`
 
-**Example input file row**
+**Example input file row (no header)**
 ```
 chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_barcode]
 ```
