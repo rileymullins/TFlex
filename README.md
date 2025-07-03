@@ -45,16 +45,9 @@
    - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
    - This step will also count the number of unique transposon insertions (equal to unique SRT barcodes) in the fragment-based peak. The unique transposon insertions acts as the signal of TF binding.
    - The peak set of each sample is saved in the `~/sample_peaks directory` within the specified output directory as a .parquet file.
-
-   - Note - The SRT barcode-based peak width will nearly always be smaller than the fragment-based peak width.
-      - However on rare occasion, the fragment-based peak width will be larger. The following logic explains how this can happen:
-         - The peak caller will always apply an extension to both side of the fragment-based peak (set by extend parameter, default 200bp to both sides)
-         - A 100bp extension is applied to both sides of the SRT barcode-based peak.
-         - In some cases, a fragment will occur in the extension window of the fragment-based peak *and* will be <100bp from the peak start or end.
-         - If that fragment is from the strand-aware most proximal position of the SRT barcode to the transposon, then the 100bp extension applied after defining the SRT barcode peak will generate a SRT barcode-based peak width > fragment-based peak width.
 7. **Consensus peak generation:**  
    - Merges sample-specific peaks to produce consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
-8. **Read-to-peak mapping:**  
+8. **Sample peak-to-consensus peak mapping:**  
    - Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
 9. **Output aggregation:**  
    - Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
@@ -254,10 +247,21 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
     - This represents the most **upstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
   - Peak end = the **largest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
     - This represents the most **downstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
-  
+  - There is a 100bp extension applied to both ends of the SRT barcode-based peak.
+    - If the SRT barcode-based peak has only fragments of one SRT barcode, then the width would be 0. With 100bp extension to either side, this becomes 200.
+    - 
+       
 - Note that in both instances, the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments are used.
   - This is because these value represent the most proximal position of all fragments of a given SRT barcode to the transposon.
   - It is the best approximation of the true transposon insertion site if the read does not make contact with the transposon.
+
+- The SRT barcode-based peak width will nearly always be smaller than the fragment-based peak width.
+  - However on rare occasion, the fragment-based peak width will be larger. The following logic explains how this can happen:
+    - The peak caller will always apply an extension to both side of the fragment-based peak (set by extend parameter, default 200bp to both sides)
+      - A 100bp extension is applied to both sides of the SRT barcode-based peak.
+      - In some cases, a fragment will occur in the extension window of the fragment-based peak *and* will be <100bp from the peak start or end.
+      - If that fragment is from the strand-aware most proximal position of the SRT barcode to the transposon, then the 100bp extension applied after defining the SRT barcode peak will generate a SRT barcode-based peak width > fragment-based peak width.
+- 
 
 ---
 
