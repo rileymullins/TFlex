@@ -12,6 +12,7 @@ num_samples_in_consensus_peak = number of unique sample_name values in this cons
 num_groups_in_consensus_peak = number of unique group_name values in this consensus peak  
 
 sample_name = sample identifier (from annotation file). This identifier is peak calling unit. All unique sample_name values will be used to independetly call peaks. This could be a replicate of the same TF (replicate-1_TF-A), a unique time point of the same TF (timepoint1_replicate1_TF-A), or an otherwise unique experimental condition (drugX_replicate1_TF-A).
+
 group_name = group identifier (from annotation file). This identifier is used to aggregate the stats across samples belong to the same group. This would correspond to the broader group. Following the examples above, the group_name for a replicate of the same TF may be "TF_A", group_name for a time point of the same TF may be "timepoint1_TF-A", and group_nae for an otherwise unique experimental condition may be "drugX_TF-A")
 
 fragment_peak_start_for_sample = fragment-based peak start coordinate for this sample_name  
