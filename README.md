@@ -9,7 +9,7 @@ This method is capable of antibody-independent semi-multiplxed TF binding site e
 
 This method leverages the self-reporting transposon technology. It is "self-reporting" because it contains a promoter that generates transcripts containing the junction of the terminal repeat and downstream genomic DNA. Thus, the sample barcode and SRT barcode are encoded into the genomic DNA in the transposon, which is then transcribed. Thus, the approximate TF binding site can be identifed through RNA sequencing.
 
-After pooling all samples, the workflow is RNA extraction, cDNA generation, amplification of the self-reporting transpsons, and then library preparation with the Illumina Nextera XT kit.
+After pooling all samples, the workflow is RNA extraction -> cDNA generation -> amplification of the self-reporting transpsons -> Illumina Nextera XT kit -> sequencing.
 ![Picture1](https://github.com/user-attachments/assets/e02c5bdd-cfae-4988-9c55-deff1e93ea60)
 
 
@@ -17,6 +17,55 @@ After pooling all samples, the workflow is RNA extraction, cDNA generation, ampl
 ## Description of data processing script
 This pipeline processes multiplexed self-reporting transposon data to identify transcription factor (TF) binding sites. It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
 ![Picture1](https://github.com/user-attachments/assets/dd45c0cc-8132-4d65-af3a-1b24befb073c)
+
+## Input data requirements
+
+### Supported input file formats (a .qbed file is generated from the data alignment pipeline but a .bed could be used)
+
+- `.qbed`, `.bed`, `.qbed.gz`, `.bed.gz`
+- Each file must contain columns in the order:  
+  `chrom`, `start`, `end`, `reads`, `strand`, `name`
+- The `name` field should be formatted as:  
+  `library_name/sample_barcode/srt_barcode`
+- The sample_barcd
+  
+### Example input file row
+
+```
+chr1	12345	12350	100	+	[library_name]/[sample_barcode]/[srt_barcode]
+```
+
+## Interpretation of 'strand', 'start', and 'end' values in the input file
+
+- Note that by convention of the data alignment pipeline:
+  - The **'+'** strand **'end' coordinate** is the true end of the read.
+  - The **'-'** strand **'start' coordinate** is the true end of the read.
+    - **'End of the read'** means last base read from the sequencer.
+  
+  - The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
+    - This means that the **R2 (i7) read** is for **'+'** strand qbed rows are moving 5' <- 3'
+      - Therefore, when multiple fragments of the same SRT barcode exist in the same fragment-based peak, the minimum **'end' coordinate** is the closest to the transposon.
+    - This means that the **R2 (i7) read** for **'-'** qbed rows are moving 5' -> 3'.
+      - Therefore, when multiple fragments of the same SRT barcode exist in the same fragment-based peak, the minimum **'end' coordinate** is the closest to the transposon.
+
+    - Yes, this is opposite of the conventional pairing of a strand and direction of the read because the strand in the qbed refers to strand that the **transposon** was inserted into, not the strand of the read.
+    
+- In summary:
+  - For a **'+'** strand row in the qbed, the **transposon** is inserted on the **'+'** strand, the **R2 read** is moving  5' <- 3', and the **'end' coordinate** is the true end of the read.
+  - For a **'-'** strand row in the qbed, the **transposon** is inserted on the **'-'** strand, the **R2 read** is moving  5' -> 3', and the **'start' coordinate** is the true end of the read.
+
+
+## Key logic for converting the fragment-based peaks to SRT barcode-based peak boundaries
+- **Fragment-based peaks:** Peaks called from the initial input qbed file where every row represents one uniquely fragmented molecule for which the read ended at a different position.
+- **SRT barcode-based peaks:** Refined fragment-based peaks where the start and end coordinates are defined based on the unique SRT barcode positions within the peak.
+The minimum position of the SRT barcode across all its fragments in the peak is the closest to the transposon.
+
+**–** strand in the input file means reads move 5’3’.
+The maximum position of the SRT barcode across all its fragments in the peak is the closest to the transposon.
+
+Therefore, SRT barcode peak start and end are defined as follows:
+Peak start = minimum of the minimum(+ strand fragment coordinate) and maximum(- strand fragment coordinate)
+Peak end = maximum of the minimum(+strand fragment coordinate) and maximum(-strand fragment coordinate)
 
 
 
@@ -107,39 +156,6 @@ Library_B	TTAACGATCG	Rep2_TF_I	TF_I
 - **All `sample_name` values must be unique.**
 
 ---
-
-## Input data requirements
-
-### Supported input file formats
-
-- `.qbed`, `.bed`, `.qbed.gz`, `.bed.gz`
-- Each file must contain columns in the order:  
-  `chrom`, `start`, `end`, `reads`, `strand`, `name`
-- The `name` field should be formatted as:  
-  `library_name/sample_barcode/srt_barcode`
-- The sample_barcd
-  
-### Example qbed row
-
-```
-chr1	12345	12350	100	+	[library_name]/[sample_barcode]/[srt_barcode]
-```
-
-### Interpretation of 'strand', 'start', and 'end' values 
-
-- Note that by convention of the alignment pipeline:
-  - The **'+'** strand **'end' coordinate** is the true end of the read.
-  - The **'-'** strand **'start' coordinate** is the true end of the read.
-    - **'End of the read'** means last base read from the sequencer.
-  
-  - The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
-    - This means that the **R2 (i7) read** is for **'+'** strand qbed rows are moving 5' <- 3'
-    - The **R2 (i7) read** for **'-'** qbed rows are moving 5' -> 3'.
-    - Yes, this is opposite of the conventional pairing of a strand and direction of the read because the strand in the qbed refers to strand that the **transposon** was inserted into, not the strand of the read.
-    
-- In summary:
-  - For a **'+'** strand row in the qbed, the **transposon** is inserted on the **'+'** strand, the **R2 read** is moving  5' <- 3', and the **'end' coordinate** is the true end of the read.
-  - For a **'-'** strand row in the qbed, the **transposon** is inserted on the **'-'** strand, the **R2 read** is moving  5' -> 3', and the **'start' coordinate** is the true end of the read.
 
 
 ---
