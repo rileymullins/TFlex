@@ -16,7 +16,7 @@
      
 - After pooling all samples, the workflow is RNA extraction -> cDNA generation -> amplification of the self-reporting transpsons -> library preparation from amplicons with the Illumina Nextera XT kit -> sequencing.
    - Following sequencing, the reads originating from each sample are demultiplexed on the basis of the sample barcode.
-   - The unique transposon insertions, representing transcription factor binding sites, of each sample are defined by the SRT barcode and genomic coordinate of the transposon.
+   - The unique transposon insertions and their position, representing location and signal of transcription factor, of each sample are defined by the SRT barcode and genomic coordinate of the transposon.
  
  ![Picture1](https://github.com/user-attachments/assets/46acac4e-7843-49a7-9e7e-2a5b616febc6)
 
