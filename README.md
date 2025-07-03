@@ -36,10 +36,11 @@
 3. **Annotation:**  
    - Joins corrected reads with the annotation file, assigning `sample_name` and `group_name`.
 4. **Per-sample partitioning:**  
-   - Collapses any duplicate rows for each sample, summing the reads, and saved as a `.parquet` file for efficient downstream processing.
+   - Saves all rows of each `sample_name` as a `.parquet` file for efficient downstream processing.
    - The .parquet of each sample is saved in the `<output_dir>/collapsed_per_sample directory` within the specified output directory.
 5. **Fragment-based peak calling:**  
-   - For each sample, calls peaks with pycallingcards on the fragments, which may or may not be associated with more than one SRT barcode.
+   - For each sample, loads each `.parquet` file and merges rows identical in all fields except `sample_barcode_raw` and sums their reads.
+   - Then peaks are called with pycallingcards on the fragments, which may or may not be associated with more than one SRT barcode.
    - The goal here is to define regions in the genome of at least on transpsoson insertion that is supported by at least 5 differentially fragmented molecules to remove noise.
 6. **SRT barcode-based peak refinement:**
    - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
@@ -198,19 +199,17 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
 
 ## Output files
 
-- `final_results.tsv`  
+- `<output_dir>/final_results.tsv`  
   Tab-separated table containing all peak and sample statistics. See variable definitions below.
-- `column_definitions.tsv`  
+- `<output_dir>/column_definitions.tsv`  
   Tab-separated table describing all columns in `final_results.tsv`.
-- `~/collapsed_per_sample/sample.parquet`
+- `<output_dir>/collapsed_per_sample/sample.parquet`
   The subset of the qbed rows corresponding to the sample_name in the annotation file.
-- `~/sample_peaks/sample_peaks.parquet`
+- `<output_dir>/sample_peaks/sample_peaks.parquet`
   The peaks called after SRT barcode deduplication and defining the SRT barcode peak boundaries for each sample_name in the annotation file.
-- `pipeline.log`  
+- `<output_dir>/pipeline.log`  
   Log file of all steps, warnings, and errors.
-- `collapsed_per_sample/*.parquet`  
-  Per-sample data files (intermediate).
-- `pybedtools_tmp/`  
+- `<output_dir>/pybedtools_tmp/`  
   Temporary files for bedtools operations (auto-cleaned at completion).
   
 ---
