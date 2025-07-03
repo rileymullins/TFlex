@@ -4,11 +4,15 @@ Identify peaks from multiplexed self-reporting transposon data for identifying t
 
 ---
 
-## Overview
+## Overview of method
+![image](https://github.com/user-attachments/assets/f67b7cb9-9c70-4061-b525-833f69a9db96)
 
+
+## Description of script
 This pipeline processes multiplexed self-reporting transposon (SRT) data to identify transcription factor (TF) binding sites at high resolution. It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
 
-![image](https://github.com/user-attachments/assets/2b9ef772-8b37-4194-ba4c-d980b7ff215a)
+
+
 
 ### Features
 
@@ -20,6 +24,7 @@ This pipeline processes multiplexed self-reporting transposon (SRT) data to iden
 - **Consensus peak construction:** Merges sample-specific peaks to produce a unified, non-redundant set of consensus peaks across the dataset.
 - **Comprehensive reporting:** Outputs per-sample and per-group statistics, final peak sets, and detailed column definitions.
 - **Robust logging:** Logs all steps and errors for traceability.
+- **Memory efficient:** Capable of running on most laptops, but will need to monitor memory usage and lower the number of workers as needed.
 
 ---
 
@@ -48,7 +53,7 @@ python ccaller_to_assign_reproducible_peaks_with_full_pan_barcode_consensus_peak
 ### Optional arguments
 
 - `--workers`  
-  Number of parallel worker processes for peak calling (default: 10).
+  Number of parallel worker processes for peak calling (default: 10). One worker will be assigned a sample_name and perform all functions on that sample_name.
 - `--sample_barcode_dist_threshold`  
   Maximum Hamming distance allowed for correcting sample barcodes (default: 2). A value of 2 means that only sample barcodes that have ≤ 2 mismatches from the sample barcode are assigned to the whitelisted sample barcode.
 - `--srt_bc_dist_threshold`  
@@ -116,12 +121,15 @@ chr1	12345	12350	100	+	[library_name]/[sample_barcode]/[srt_barcode]
 
 ### Interpretation of 'strand', 'start', and 'end' values 
 
-- Note that by convention of the alignment pipeline, the **'+'** strand **'end' coordinate** is the true end of the read, and the **'-'** strand **'start' coordinate** is the true end of the read.
-- 'End of the read' = last base read from the sequencer.
-- The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
-- This means that the **R2 read** is for **'+'** strand qbed rows (meaning the transpson was inserted on the + strand) are moving 5' <- 3'
-  - The **R2 read** for **'-'** qbed rows (meaning the transpson was inserted on the - strand) are moving 5' -> 3'.
-
+- Note that by convention of the alignment pipeline:
+  - The **'+'** strand **'end' coordinate** is the true end of the read.
+  - The **'-'** strand **'start' coordinate** is the true end of the read.
+    - **'End of the read'** means last base read from the sequencer.
+  
+  - The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
+    - This means that the **R2 (i7) read** is for **'+'** strand qbed rows are moving 5' <- 3'
+    - The **R2 (i7) read** for **'-'** qbed rows are moving 5' -> 3'.
+    - Yes, this is opposite of the conventional pairing of a strand and direction of the read because the strand in the qbed refers to strand that the **transposon** was inserted into, not the strand of the read.
     
 - In summary:
   - For a **'+'** strand row in the qbed, the **transposon** is inserted on the **'+'** strand, the **R2 read** is moving  5' <- 3', and the **'end' coordinate** is the true end of the read.
@@ -141,7 +149,7 @@ chr1	12345	12350	100	+	[library_name]/[sample_barcode]/[srt_barcode]
 4. **Per-sample partitioning:**  
    Collapses all reads for each sample into a `.parquet` file for efficient downstream processing.
 5. **Peak calling:**  
-   For each sample, calls peaks with pycallingcards, then refines peak boundaries using UMI-tools clustering of SRT barcodes.
+   For each sample, calls peaks with pycallingcards, then refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
 6. **Consensus peak generation:**  
    Merges sample-specific peaks to produce consensus peaks across all samples.
 7. **Read-to-peak mapping:**  
