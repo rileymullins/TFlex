@@ -27,14 +27,16 @@ This pipeline processes multiplexed self-reporting transposon data to identify t
 3. **Annotation:**  
    Joins corrected reads with the annotation file, assigning `sample_name` and `group_name`.
 4. **Per-sample partitioning:**  
-   Collapses any duplicate rows for each sample, summing the reads, and saved ass a `.parquet` file for efficient downstream processing.
-5. **Peak calling:**  
+   Collapses any duplicate rows for each sample, summing the reads, and saved as a `.parquet` file for efficient downstream processing.
+   The .parquet of each sample is saved in the ~/collapsed_per_sample directory within the specified output directory.
+6. **Peak calling:**  
    For each sample, calls peaks with pycallingcards, then refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
-6. **Consensus peak generation:**  
+   The peak set of each sample is saved in the ~/sample_peaks directory within the specified output directory as a .parquet file.
+7. **Consensus peak generation:**  
    Merges sample-specific peaks to produce consensus peaks across all samples.
-7. **Read-to-peak mapping:**  
+8. **Read-to-peak mapping:**  
   Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
-8. **Output aggregation:**  
+9. **Output aggregation:**  
   Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
    A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
 
@@ -46,13 +48,33 @@ This pipeline processes multiplexed self-reporting transposon data to identify t
   `chrom`, `start`, `end`, `reads`, `strand`, `name`
 - The `name` field should be formatted as:  
   `library_name/sample_barcode/srt_barcode`
-  
-### Example input file row
 
+**Example input file row**
 ```
 chr    start    end    reads    strand        name
 chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_barcode]
 ```
+
+---
+
+## Output files
+
+- `final_results.tsv`  
+  Tab-separated table containing all peak and sample statistics. See variable definitions below.
+- `column_definitions.tsv`  
+  Tab-separated table describing all columns in `final_results.tsv`.
+- `~/collapsed_per_sample/sample.parquet`
+  The subset of the qbed rows corresponding to the sample_name in the annotation file.
+- '~/sample_peaks/sample_peaks.parquet'
+  The peaks called after SRT barcode deduplication and defining the SRT barcode peak boundaries for each sample_name in the annotation file.
+- `pipeline.log`  
+  Log file of all steps, warnings, and errors.
+- `collapsed_per_sample/*.parquet`  
+  Per-sample data files (intermediate).
+- `pybedtools_tmp/`  
+  Temporary files for bedtools operations (auto-cleaned at completion).
+  
+---
 
 ## Interpretation of 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
 - The R2 read end is reported in the input file.
@@ -60,7 +82,7 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
 - By convention of the alignemnt pipeline, **'end' coordinate** for a **'+'** strand row is the true end of the read, and the **'start' coordinate** for a **'-'** strand row is the true end of the read.
 - Reads that hit the transposon are truncated to the last base prior to beginning of the transposon.
 
-- Summary:
+# Summary:
   - For a **'+'** strand row in the qbed:
     - **Transposon** is inserted on the **'+'** strand.
     - R2 read is moving  **5' <- 3'**.
@@ -185,22 +207,6 @@ Library_B	TTAACGATCG	Rep2_TF_I	TF_I
 
 - **All columns must be present, and tab-separated.**
 - **All `sample_name` values must be unique.**
-
----
-
-
-## Output files
-
-- `final_results.tsv`  
-  Tab-separated table containing all peak and sample statistics. See variable definitions below.
-- `column_definitions.tsv`  
-  Tab-separated table describing all columns in `final_results.tsv`.
-- `pipeline.log`  
-  Log file of all steps, warnings, and errors.
-- `collapsed_per_sample/*.parquet`  
-  Per-sample data files (intermediate).
-- `pybedtools_tmp/`  
-  Temporary files for bedtools operations (auto-cleaned at completion).
 
 ---
 
