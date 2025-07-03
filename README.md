@@ -32,6 +32,9 @@
 ### Phase 1: Loading, Correcting, and Annotating All Reads
 1. **Input loading and barcode parsing:**  
    - Reads all qbed/bed files and parses the `name` field into `library_name`, `sample_barcode_raw`, and `srt_bc`.
+   - To avoid memory issues with a lot of data, each input file is looped through one at a time. For each file, barcode correction and annotation is performed. Then the data is partitioned by sample_name to temporary .parquet files in a partitioned_temp/ directory.
+   - After all input files have been processed, the intermediate files are grouped sample_name and concatenated to create the final collapsed_per_sample/{sample_name}.parquet files.
+   - Temporary directory with the intermediate files is removed after completion.
 2. **Barcode correction:**  
    - Corrects sample barcodes against the annotation whitelist, using Hamming distance up to the `--sample_barcode_dist_threshold`.
 3. **Annotation:**  
