@@ -115,7 +115,7 @@ python ccaller_to_assign_reproducible_peaks_with_full_pan_barcode_consensus_peak
   --minnum 0 \
   --lam_win_size 1000000
 ```
-min_insertions ,minlen ,extend, maxbetween, minnum, lam_win_size all refer to the pycallingcards peak caller settings. Full description available [here](https://pycallingcards.readthedocs.io/en/latest/api/reference/pycallingcards.preprocessing.call_peaks.html)
+min_insertions, minlen, extend, maxbetween, minnum, lam_win_size all refer to the pycallingcards peak caller settings. Full description available [here](https://pycallingcards.readthedocs.io/en/latest/api/reference/pycallingcards.preprocessing.call_peaks.html).
 
 
 ### Required arguments
