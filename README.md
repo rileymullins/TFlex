@@ -1,4 +1,4 @@
-![Picture1](https://github.com/user-attachments/assets/1966b762-87d9-4af6-91ea-a5500bcd8497)# multiplexed_srt_tf_mapping
+# multiplexed_srt_tf_mapping
 
 Identify peaks from multiplexed self-reporting transposon data for identifying transcription factor binding sites.
 
