@@ -29,31 +29,36 @@
  ![Picture1](https://github.com/user-attachments/assets/dd45c0cc-8132-4d65-af3a-1b24befb073c)
 
 ## Pipeline steps
-
 1. **Input loading and barcode parsing:**  
-   Reads all qbed/bed files and parses the `name` field into `library_name`, `sample_barcode_raw`, and `srt_bc`.
+   - Reads all qbed/bed files and parses the `name` field into `library_name`, `sample_barcode_raw`, and `srt_bc`.
 2. **Barcode correction:**  
-   Corrects sample barcodes against the annotation whitelist, using Hamming distance up to the `--sample_barcode_dist_threshold`.
+   - Corrects sample barcodes against the annotation whitelist, using Hamming distance up to the `--sample_barcode_dist_threshold`.
 3. **Annotation:**  
-   Joins corrected reads with the annotation file, assigning `sample_name` and `group_name`.
+   - Joins corrected reads with the annotation file, assigning `sample_name` and `group_name`.
 4. **Per-sample partitioning:**  
-   Collapses any duplicate rows for each sample, summing the reads, and saved as a `.parquet` file for efficient downstream processing.
-   The .parquet of each sample is saved in the `~/collapsed_per_sample directory` within the specified output directory.
-6. **Fragment-based peak calling:**  
-   For each sample, calls peaks with pycallingcards on the fragments, which may or may not be associated with more than one SRT barcode.
-   The goal here is to define regions in the genome of at least on transpsoson insertion that is supported by at least 5 differentially fragmented molecules to remove noise.
-8. **SRT barcode-based peak refinement:**
-   The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
-   This step will also now count the nubmer of unique transposon insertions (equal to unique SRT barcodes) in the fragment-based peak.
-   The unique transposon insertions acts as the signal of TF binding.
-   The peak set of each sample is saved in the `~/sample_peaks directory` within the specified output directory as a .parquet file.
-10. **Consensus peak generation:**  
-   Merges sample-specific peaks to produce consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
-11. **Read-to-peak mapping:**  
-  Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
-12. **Output aggregation:**  
-  Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
-   A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
+   - Collapses any duplicate rows for each sample, summing the reads, and saved as a `.parquet` file for efficient downstream processing.
+   - The .parquet of each sample is saved in the `~/collapsed_per_sample directory` within the specified output directory.
+5. **Fragment-based peak calling:**  
+   - For each sample, calls peaks with pycallingcards on the fragments, which may or may not be associated with more than one SRT barcode.
+   - The goal here is to define regions in the genome of at least on transpsoson insertion that is supported by at least 5 differentially fragmented molecules to remove noise.
+6. **SRT barcode-based peak refinement:**
+   - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
+   - This step will also count the number of unique transposon insertions (equal to unique SRT barcodes) in the fragment-based peak. The unique transposon insertions acts as the signal of TF binding.
+   - The peak set of each sample is saved in the `~/sample_peaks directory` within the specified output directory as a .parquet file.
+
+   - Note - The SRT barcode-based peak width will nearly always be smaller than the fragment-based peak width.
+      - However on rare occasion, the fragment-based peak width will be larger. The following logic explains how this can happen:
+         - The peak caller will always apply an extension to both side of the fragment-based peak (set by extend parameter, default 200bp to both sides)
+         - A 100bp extension is applied to both sides of the SRT barcode-based peak.
+         - In some cases, a fragment will occur in the extension window of the fragment-based peak *and* will be <100bp from the peak start or end.
+         - If that fragment is from the strand-aware most proximal position of the SRT barcode to the transposon, then the 100bp extension applied after defining the SRT barcode peak will generate a SRT barcode-based peak width > fragment-based peak width.
+7. **Consensus peak generation:**  
+   - Merges sample-specific peaks to produce consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
+8. **Read-to-peak mapping:**  
+   - Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
+9. **Output aggregation:**  
+   - Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
+   - A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
 
 
 ## Usage
