@@ -14,9 +14,9 @@ num_groups_in_consensus_peak = number of unique group_name values in this consen
 sample_name = sample identifier (from annotation file)  
 group_name = group identifier (from annotation file)  
 
-frag_peak_start_for_sample = fragment-based peak start coordinate for this sample_name  
-frag_peak_end_for_sample = fragment-based peak end coordinate for this sample_name  
-frag_peak_width_for_sample = fragment-based peak width (end – start) for this sample_name  
+fragment_peak_start_for_sample = fragment-based peak start coordinate for this sample_name  
+fragment_peak_end_for_sample = fragment-based peak end coordinate for this sample_name  
+fragment_peak_width_for_sample = fragment-based peak width (end – start) for this sample_name  
 
 srt_bc_peak_start_for_sample = SRT-barcode-based peak start coordinate for this sample_name  
 srt_bc_peak_end_for_sample = SRT-barcode-based peak end coordinate for this sample_name  
