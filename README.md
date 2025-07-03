@@ -39,11 +39,11 @@
    - Saves all rows of each `sample_name` as a `.parquet` file for efficient downstream processing.
    - The .parquet of each sample is saved in the `<output_dir>/collapsed_per_sample directory` within the specified output directory.
 5. **Fragment-based peak calling:**  
-   - For each sample, loads each `.parquet` file and merges rows identical in all fields except `sample_barcode_raw` and sums their reads.
-   - Then peaks are called with pycallingcards on the fragments, which may or may not be associated with more than one SRT barcode.
+   - For each sample, loads each partitioned `.parquet` file and merges rows identical in all fields except `sample_barcode_raw` and sums their reads.
+   - Then peaks are called with pycallingcards on these fragments, which may or may not be associated with more than one SRT barcode.
    - The goal here is to define regions in the genome of at least on transpsoson insertion that is supported by at least 5 differentially fragmented molecules to remove noise.
 6. **Fragments-to-fragment based peak mapping within sample**
-   - The fragments of each sample are intersected to their own peak set to map the fragments to the peaks.
+   - The deduplicated fragments of each sample are intersected to their own peak set to map the fragments to the peaks.
    - This is required for step 7.
 7. **SRT barcode-based peak refinement:**
    - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
