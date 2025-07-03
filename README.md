@@ -12,14 +12,33 @@ This method leverages the self-reporting transposon technology. It is "self-repo
 After pooling all samples, the workflow is RNA extraction -> cDNA generation -> amplification of the self-reporting transpsons -> Illumina Nextera XT kit -> sequencing.
 ![Picture1](https://github.com/user-attachments/assets/e02c5bdd-cfae-4988-9c55-deff1e93ea60)
 
-
+---
 
 ## Description of data processing script
 This pipeline processes multiplexed self-reporting transposon data to identify transcription factor (TF) binding sites. It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
 ![Picture1](https://github.com/user-attachments/assets/dd45c0cc-8132-4d65-af3a-1b24befb073c)
 
-## Input data requirements
+## Pipeline steps
 
+1. **Input loading and barcode parsing:**  
+   Reads all qbed/bed files and parses the `name` field into `library_name`, `sample_barcode_raw`, and `srt_bc`.
+2. **Barcode correction:**  
+   Corrects sample barcodes against the annotation whitelist, using Hamming distance up to the `--sample_barcode_dist_threshold`.
+3. **Annotation:**  
+   Joins corrected reads with the annotation file, assigning `sample_name` and `group_name`.
+4. **Per-sample partitioning:**  
+   Collapses any duplicate rows for each sample, summing the reads, and saved ass a `.parquet` file for efficient downstream processing.
+5. **Peak calling:**  
+   For each sample, calls peaks with pycallingcards, then refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
+6. **Consensus peak generation:**  
+   Merges sample-specific peaks to produce consensus peaks across all samples.
+7. **Read-to-peak mapping:**  
+  Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
+8. **Output aggregation:**  
+  Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
+   A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
+
+---
 ### Supported input file formats (a .qbed file is generated from the data alignment pipeline but a .bed could be used)
 
 - `.qbed`, `.bed`, `.qbed.gz`, `.bed.gz`
@@ -41,7 +60,7 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
 - By convention of the alignemnt pipeline, **'end' coordinate** for a **'+'** strand row is the true end of the read, and the **'start' coordinate** for a **'-'** strand row is the true end of the read.
 - Reads that hit the transposon are truncated to the last base prior to beginning of the transposon.
 
-- In summary:
+- Summary:
   - For a **'+'** strand row in the qbed:
     - **Transposon** is inserted on the **'+'** strand.
     - R2 read is moving  **5' <- 3'**.
@@ -83,17 +102,30 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
 ---
 
 ## Usage
-
+**Default parameters command line**
 ```bash
 python ccaller_to_assign_reproducible_peaks_with_full_pan_barcode_consensus_peaks_and_umi_based_peak_boundaries.py \
-  --input_dir <input_qbed_dir> \
-  --output_dir <output_dir> \
-  --annotation_file <annotation_file.tsv or .csv> \
-  --workers <num>] \
-  --sample_barcode_dist_threshold <int> \
-  --srt_bc_dist_threshold <int> \
-  [other peak calling parameters, see below]
+  --input_dir /path/to/qbed_files \
+  --output_dir /path/to/results \
+  --annotation_file /path/to/annotation_file.tsv \
+  --workers 8 \
+  --sample_barcode_dist_threshold 2 \
+  --srt_bc_dist_threshold 1 \
+  --min_rows_threshold 50000 \
+  --method CCcaller \
+  --reference hg38 \
+  --pvalue_cutoff 0.01 \
+  --pvalue_adj_cutoff 0.01 \
+  --min_insertions 5 \
+  --minlen 0 \
+  --extend 200 \
+  --maxbetween 150 \
+  --minnum 0 \
+  --lam_win_size 1000000
 ```
+min_insertions ,minlen ,extend, maxbetween, minnum, lam_win_size all refer to the pycallingcards peak caller settings. Full description available [here](https://pycallingcards.readthedocs.io/en/latest/api/reference/pycallingcards.preprocessing.call_peaks.html)
+
+---
 
 ### Required arguments
 
@@ -112,7 +144,7 @@ python ccaller_to_assign_reproducible_peaks_with_full_pan_barcode_consensus_peak
   Maximum Hamming distance allowed for correcting sample barcodes (default: 2). A value of 2 means that only sample barcodes that have ≤ 2 mismatches from the sample barcode are assigned to the whitelisted sample barcode.
 - `--srt_bc_dist_threshold`  
   Maximum Hamming distance for SRT-barcode clustering (default: 1). A value of 1 means that only SRT-barcodes with ≤ 1 mismatches from each other will be grouped.
-- Additional advanced parameters for peak calling (see script source for defaults and descriptions):
+- Additional parameters for fragment-based peak calling (see script source for defaults and descriptions):
   - `--pvalue_cutoff`, `--pvalue_adj_cutoff`, `--min_insertions`, `--minlen`, `--extend`, `--maxbetween`, `--minnum`, `--lam_win_size`
   - It is recommended to leave these parameters at the default values.
   - The purpose of these parameters is to define all regions of concentrated fragments for subsequent SRT-barcode-based peak boundary definitions and donwstream analysis.
@@ -156,29 +188,6 @@ Library_B	TTAACGATCG	Rep2_TF_I	TF_I
 
 ---
 
-
----
-
-## Pipeline steps
-
-1. **Input loading and barcode parsing:**  
-   Reads all qbed/bed files and parses the `name` field into `library_name`, `sample_barcode_raw`, and `srt_bc`.
-2. **Barcode correction:**  
-   Corrects sample barcodes against the annotation whitelist, using Hamming distance up to the `--sample_barcode_dist_threshold`.
-3. **Annotation:**  
-   Joins corrected reads with the annotation file, assigning `sample_name` and `group_name`.
-4. **Per-sample partitioning:**  
-   Collapses all reads for each sample into a `.parquet` file for efficient downstream processing.
-5. **Peak calling:**  
-   For each sample, calls peaks with pycallingcards, then refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
-6. **Consensus peak generation:**  
-   Merges sample-specific peaks to produce consensus peaks across all samples.
-7. **Read-to-peak mapping:**  
-   Intersects all reads and all sample peaks with consensus peaks to generate per-sample and per-group statistics.
-8. **Output aggregation:**  
-   Produces a final report (`final_results.tsv`) with detailed statistics and peak boundaries, and a `column_definitions.tsv` file describing all output columns.
-
----
 
 ## Output files
 
@@ -225,34 +234,49 @@ Library_B	TTAACGATCG	Rep2_TF_I	TF_I
 
 ## Dependencies
 
-- Python 3.8+
-- [polars](https://docs.pola.rs/user-guide/installation/) (for fast DataFrame operations)
-- [pandas](https://pandas.pydata.org/docs/getting_started/install.html)
-- [pybedtools](https://daler.github.io/pybedtools/main.html)
-- [pycallingcards](https://pycallingcards.readthedocs.io/en/latest/#)
-- [UMI-tools](https://umi-tools.readthedocs.io/en/latest/INSTALL.html)
-- [tqdm](https://pypi.org/project/tqdm/) (for progress bars)
+The following packages and versions were used to create and test this script using **Python 3.12.10**:
 
+| Package         | Version    | Purpose                        |
+|-----------------|------------|--------------------------------|
+| [polars](https://docs.pola.rs/user-guide/installation/)          | 1.31.0     | Fast DataFrames manipulation                |
+| [pandas](https://pandas.pydata.org/docs/getting_started/install.html)          | 2.2.3      | DataFrames, pybedtools input   |
+| [pybedtools](https://daler.github.io/pybedtools/main.html)      | 0.12.0     | Genomic intervals intersections             |
+| [pycallingcards](https://pycallingcards.readthedocs.io/en/latest/#)  | 1.0.0      | Fragment-based peak calling                   |
+| [UMI-tools](https://umi-tools.readthedocs.io/en/latest/INSTALL.html)       | 1.1.6      | SRT barcode clustering to deduplicate within peak             |
+| [tqdm](https://pypi.org/project/tqdm/)            | 4.67.1     | Progress bars                  |
+| [bedtools](https://bedtools.readthedocs.io/en/latest/content/installation.html)        | 2.31.1     | (external, required for pybedtools) |
 
-Install dependencies with pip:
+### Installation
+
+Install all required Python packages with pip:
+```bash
+pip install polars==1.31.0 pandas==2.2.3 pybedtools==0.12.0 pycallingcards==1.0.0 umi_tools==1.1.6 tqdm==4.67.1
+```
+> **Note:**  
+> pybedtools requires bedtools be installed on your system and available in your `$PATH`.  
+> Install with conda:
+> ```bash
+> conda install -c bioconda bedtools
+> ```
+> Or with apt (on Ubuntu):
+> ```bash
+> sudo apt-get install bedtools
+> ```
+
+---
+
+## Checking your installed versions
+
+To check package versions, run the following in the terminal:
 
 ```bash
-pip install polars pandas pybedtools pycallingcards umi_tools tqdm
+python -c "import polars, pandas, pybedtools, tqdm, umi_tools, pycallingcards as cc; print('polars:', polars.__version__); print('pandas:', pandas.__version__); print('pybedtools:', pybedtools.__version__); print('tqdm:', tqdm.__version__); print('umi_tools:', umi_tools.__version__); print('pycallingcards:', cc.__version__)"
+bedtools --version
 ```
 
-> Note: pybedtools requires bedtools (>=2.27.1) installed on your system and available in your `$PATH`.
-
 ---
 
-## Logging and troubleshooting
-
-- Progress, errors, and warnings are logged to `pipeline.log` in the output directory.
-- Intermediate files are saved in the output directory for reproducibility and debugging.
-- The script exits with informative error messages if any required step fails.
-
----
-
-## Advanced options
+## Options
 
 - All pycallingcards peak calling parameters can be overridden via the command line.
 - The pipeline can be parallelized across as many CPUs as available using `--workers`.
@@ -260,19 +284,6 @@ pip install polars pandas pybedtools pycallingcards umi_tools tqdm
 
 ---
 
-## Example run
-
-```bash
-python ccaller_to_assign_reproducible_peaks_with_full_pan_barcode_consensus_peaks_and_umi_based_peak_boundaries.py \
-  --input_dir /path/to/qbed_files \
-  --output_dir /path/to/results \
-  --annotation_file /path/to/annotation_file.tsv \
-  --workers 8 \
-  --sample_barcode_dist_threshold 2 \
-  --srt_bc_dist_threshold 1
-```
-
----
 
 ## Contact
 
