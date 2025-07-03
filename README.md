@@ -37,6 +37,7 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
 
 ## Interpretation of 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
 - The R2 read end is reported in the input file.
+- By convention of the alignemnt pipeline, **'end' coordinate** for a **'+'** strand row is the true end of the read, and the **'start' coordinate** for a **'-'** strand row is the true end of the read
 
 - In summary:
   - For a **'+'** strand row in the qbed:
