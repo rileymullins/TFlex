@@ -27,32 +27,40 @@ This pipeline processes multiplexed self-reporting transposon data to identify t
   `chrom`, `start`, `end`, `reads`, `strand`, `name`
 - The `name` field should be formatted as:  
   `library_name/sample_barcode/srt_barcode`
-- The sample_barcd
   
 ### Example input file row
 
 ```
-chr1	12345	12350	100	+	[library_name]/[sample_barcode]/[srt_barcode]
+chr    start    end    reads    strand    name
+chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_barcode]
 ```
 
-## Interpretation of 'strand', 'start', and 'end' values in the input file
+## Interpretation of 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
 
 - Note that by convention of the data alignment pipeline:
   - The **'+'** strand **'end' coordinate** is the true end of the read.
   - The **'-'** strand **'start' coordinate** is the true end of the read.
     - **'End of the read'** means last base read from the sequencer.
   
-  - The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
-    - This means that the **R2 (i7) read** is for **'+'** strand qbed rows are moving 5' <- 3'
-      - Therefore, when multiple fragments of the same SRT barcode exist in the same fragment-based peak, the minimum **'end' coordinate** is the closest to the transposon.
-    - This means that the **R2 (i7) read** for **'-'** qbed rows are moving 5' -> 3'.
-      - Therefore, when multiple fragments of the same SRT barcode exist in the same fragment-based peak, the minimum **'end' coordinate** is the closest to the transposon.
+- The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
+  - This means that the R2 (i7) read for **'+'** strand qbed rows are moving **5' <- 3'**.
+    - Therefore, when multiple fragments of the same SRT barcode with **'+'** strand exist in the same fragment-based peak, the minimum (most upstream) **'end' coordinate** is the closest to the transposon.
+        
+- This means that the R2 (i7) read for **'-'** strand qbed rows are moving **5' -> 3'**.
+  - Therefore, when multiple fragments of the same SRT barcode with **'-'** strand exist in the same fragment-based peak, the maximum (most downstream) **'start' coordinate** is the closest to the transposon.
 
-    - Yes, this is opposite of the conventional pairing of a strand and direction of the read because the strand in the qbed refers to strand that the **transposon** was inserted into, not the strand of the read.
-    
 - In summary:
-  - For a **'+'** strand row in the qbed, the **transposon** is inserted on the **'+'** strand, the **R2 read** is moving  5' <- 3', and the **'end' coordinate** is the true end of the read.
-  - For a **'-'** strand row in the qbed, the **transposon** is inserted on the **'-'** strand, the **R2 read** is moving  5' -> 3', and the **'start' coordinate** is the true end of the read.
+  - For a **'+'** strand row in the qbed:
+    - The **transposon** is inserted on the **'+'** strand.
+    - The R2 read is moving  **5' <- 3'**.
+    - The **'end' coordinate** is the true end of the read.
+    - The **smallest end coordinate** (most upstream) is the closest to the transposon.
+    - 
+  - For a **'-'** strand row in the qbed:
+    - The **transposon** is inserted on the **'-'** strand.
+    - The R2 read is moving  **5' -> 3'**.
+    - The **'start' coordinate** is the true end of the read.
+    - The **largest start coordinate** (most upstream) is the closest to the transposon.
 
 
 ## Key logic for converting the fragment-based peaks to SRT barcode-based peak boundaries
