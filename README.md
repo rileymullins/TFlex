@@ -7,9 +7,15 @@ Identify peaks from multiplexed self-reporting transposon data for identifying t
 ## Overview of method
 ![image](https://github.com/user-attachments/assets/f67b7cb9-9c70-4061-b525-833f69a9db96)
 
+This method is capable of antibody-independent semi-multiplxed TF binding site experiments. That is, after initial transfection of a TF-tranposase fusion and a pool of self-reporting transposons containing many SRT barcodes and a unique sample barcode, all samples can be combined. 
 
-## Description of script
-This pipeline processes multiplexed self-reporting transposon (SRT) data to identify transcription factor (TF) binding sites at high resolution. It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
+This method leverages the self-reporting transposon technology. It is "self-reporting" because it contains a promoter that generates transcripts containing the junction of the terminal repeat and downstream genomic DNA. Thus, the sample barcode and SRT barcode are encoded into the genomic DNA in the transposon, which is then transcribed. Thus, the approximate TF binding site can be identifed through RNA sequencing.
+
+After pooling all samples, the workflow is RNA extraction, cDNA generation, amplification of the self-reporting transpsons, and then library preparation with the Illumina Nextera XT kit.
+
+
+## Description of data processing script
+This pipeline processes multiplexed self-reporting transposon data to identify transcription factor (TF) binding sites. It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
 
 
 
