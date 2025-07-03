@@ -211,12 +211,13 @@ chr1	12345	12350	100	+	[library_name]/[sample_barcode]/[srt_barcode]
 ## Dependencies
 
 - Python 3.8+
-- [polars](https://www.pola.rs/) (for fast DataFrame operations)
-- [pandas](https://pandas.pydata.org/)
-- [pybedtools](https://daler.github.io/pybedtools/)
+- [polars](https://docs.pola.rs/user-guide/installation/) (for fast DataFrame operations)
+- [pandas](https://pandas.pydata.org/docs/getting_started/install.html)
+- [pybedtools](https://pycallingcards.readthedocs.io/en/latest/#)
 - [pycallingcards](https://github.com/brwnj/pycallingcards)
-- [UMI-tools](https://umi-tools.readthedocs.io/en/latest/)
-- [tqdm](https://tqdm.github.io/) (for progress bars)
+- [UMI-tools](https://umi-tools.readthedocs.io/en/latest/INSTALL.html)
+- [tqdm](https://pypi.org/project/tqdm/) (for progress bars)
+
 
 Install dependencies with pip:
 
