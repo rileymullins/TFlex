@@ -11,7 +11,7 @@ consensus_peak_width = width (end – start) of final merged, pan-dataset cons
 num_samples_in_consensus_peak = number of unique sample_name values in this consensus peak  
 num_groups_in_consensus_peak = number of unique group_name values in this consensus peak  
 
-sample_name = sample identifier (from annotation file). At the most basic level, this identifier is the peak calling unit on which peaks will be called independently. This value could be a replicate of the same TF (replicate-1_TF-A), a unique time point of the same TF (timepoint1_replicate1_TF-A), or an otherwise unique experimental condition (drugX_replicate1_TF-A).
+sample_name = sample identifier (from annotation file). All sample_names MUST BE UNIQUE. At the most basic level, this identifier is the peak calling unit on which peaks will be called independently. This value could be a replicate of the same TF (replicate-1_TF-A), a unique time point of the same TF (timepoint1_replicate1_TF-A), or an otherwise unique experimental condition (drugX_replicate1_TF-A).
 
 group_name = group identifier (from annotation file). At the most basic level, this identifier is used to aggregate stats across samples belong to the same broader group. Matching the examples above, the group_name for a replicate of the same TF may be "TF_A", group_name for a time point of the same TF may be "timepoint1_TF-A", and group_nae for an otherwise unique experimental condition may be "drugX_TF-A")
 
@@ -32,6 +32,10 @@ group_total_fragments_in_consensus_peak = sum of sample_total_fragments_in_conse
 group_total_insertions_in_consensus_peak = sum of sample_total_insertions_in_consensus_peak across all sample_name values in this group_name  
 
 
+# Input QBED format
+Column 1 = chromosome
+Column 2 = Start
+Colu
 
 
 
