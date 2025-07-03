@@ -8,6 +8,8 @@ Identify peaks from multiplexed self-reporting transposon data for identifying t
 
 This pipeline processes multiplexed self-reporting transposon (SRT) data to identify transcription factor (TF) binding sites at high resolution. It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
 
+![image](https://github.com/user-attachments/assets/2b9ef772-8b37-4194-ba4c-d980b7ff215a)
+
 ### Features
 
 - **Flexible input:** Accepts multiple `.qbed`, `.bed`, or gzipped equivalents from a directory.
@@ -28,9 +30,9 @@ python ccaller_to_assign_reproducible_peaks_with_full_pan_barcode_consensus_peak
   --input_dir <input_qbed_dir> \
   --output_dir <output_dir> \
   --annotation_file <annotation_file.tsv or .csv> \
-  [--workers <num>] \
-  [--sample_barcode_dist_threshold <int>] \
-  [--srt_bc_dist_threshold <int>] \
+  --workers <num>] \
+  --sample_barcode_dist_threshold <int> \
+  --srt_bc_dist_threshold <int> \
   [other peak calling parameters, see below]
 ```
 
@@ -46,13 +48,16 @@ python ccaller_to_assign_reproducible_peaks_with_full_pan_barcode_consensus_peak
 ### Optional arguments
 
 - `--workers`  
-  Number of parallel worker processes for peak calling (default: all CPUs).
+  Number of parallel worker processes for peak calling (default: 10).
 - `--sample_barcode_dist_threshold`  
-  Maximum Hamming distance allowed for correcting sample barcodes (default: 2).
+  Maximum Hamming distance allowed for correcting sample barcodes (default: 2). A value of 2 means that only sample barcodes that have ≤ 2 mismatches from the sample barcode are assigned to the whitelisted sample barcode.
 - `--srt_bc_dist_threshold`  
-  Maximum Hamming distance for SRT-barcode (UMI) clustering (default: 1).
+  Maximum Hamming distance for SRT-barcode clustering (default: 1). A value of 1 means that only SRT-barcodes with ≤ 1 mismatches from each other will be grouped.
 - Additional advanced parameters for peak calling (see script source for defaults and descriptions):
   - `--pvalue_cutoff`, `--pvalue_adj_cutoff`, `--min_insertions`, `--minlen`, `--extend`, `--maxbetween`, `--minnum`, `--lam_win_size`
+  - It is recommended to leave these parameters at the default values.
+  - The purpose of these parameters is to define all regions of concentrated fragments for subsequent SRT-barcode-based peak boundary definitions and donwstream analysis.
+  - Fragment peaks with <5 fragments following SRT barcode correction are considered noise and discarded from the analysis.
 
 ---
 
@@ -100,13 +105,28 @@ Library_B	TTAACGATCG	Rep2_TF_I	TF_I
 - Each file must contain columns in the order:  
   `chrom`, `start`, `end`, `reads`, `strand`, `name`
 - The `name` field should be formatted as:  
-  `library_name/sample_barcode/srt_bc`
-
+  `library_name/sample_barcode/srt_barcode`
+- The sample_barcd
+  
 ### Example qbed row
 
 ```
-chr1	12345	12350	4	+	Library_A/AAGGCAGACG/UMI1234
+chr1	12345	12350	100	+	[library_name]/[sample_barcode]/[srt_barcode]
 ```
+
+### Interpretation of 'strand', 'start', and 'end' values 
+
+- Note that by convention of the alignment pipeline, the **'+'** strand **'end' coordinate** is the true end of the read, and the **'-'** strand **'start' coordinate** is the true end of the read.
+- 'End of the read' = last base read from the sequencer.
+- The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
+- This means that the **R2 read** is for **'+'** strand qbed rows (meaning the transpson was inserted on the + strand) are moving 5' <- 3'
+  - The **R2 read** for **'-'** qbed rows (meaning the transpson was inserted on the - strand) are moving 5' -> 3'.
+
+    
+- In summary:
+  - For a **'+'** strand row in the qbed, the **transposon** is inserted on the **'+'** strand, the **R2 read** is moving  5' <- 3', and the **'end' coordinate** is the true end of the read.
+  - For a **'-'** strand row in the qbed, the **transposon** is inserted on the **'-'** strand, the **R2 read** is moving  5' -> 3', and the **'start' coordinate** is the true end of the read.
+
 
 ---
 
