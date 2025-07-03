@@ -188,7 +188,7 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
   Temporary files for bedtools operations (auto-cleaned at completion).
   
 ---
-## Interpretation of sequencing data in the input file
+## Key fine details of data processing
 
 ### 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
 - The R2 read end is reported in the input file.
@@ -212,7 +212,7 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
     - **'start' coordinate** is the true end of the read.
     - **Largest start coordinate** (most downstream) is the closest to the transposon.
       
-### Key logic for converting the fragment-based peaks to SRT barcode-based peak boundaries
+### Key logic for converting the fragment-based peaks to SRT barcode-based peaks
 - **Fragment-based peaks:** Peaks called from the initial input qbed file where every row represents one uniquely fragmented molecule for which the read ended at a different position.
 - **SRT barcode-based peaks:** Refined fragment-based peaks where the start and end coordinates are defined based on the unique SRT barcode positions within the peak.
   
@@ -273,12 +273,3 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
 | group_total_reads_in_consensus_peak | sum of sample_total_reads_in_consensus_peak across all sample_name values in this group_name |
 | group_total_fragments_in_consensus_peak | sum of sample_total_fragments_in_consensus_peak across all sample_name values in this group_name |
 | group_total_insertions_in_consensus_peak | sum of sample_total_insertions_in_consensus_peak across all sample_name values in this group_name |
-
----
-
----
-
-
-## Contact
-
-For questions, bugs, or feature requests, please open an issue or contact the repository maintainer.
