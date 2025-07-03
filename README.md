@@ -214,7 +214,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
   Temporary files for bedtools operations (auto-cleaned at completion).
   
 ---
-## Key fine details of data processing
+## Key details of data processing
 
 ### 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
 - The R2 read end is reported in the input file.
@@ -248,7 +248,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
     - This represents the most **downstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
   - There is a 100bp extension applied to both ends of the SRT barcode-based peak.
     - If the SRT barcode-based peak has only fragments of one SRT barcode, then the width would be 0. With 100bp extension to either side, this becomes 200.
-    - 
+
        
 - Note that in both instances, the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments are used.
   - This is because these value represent the most proximal position of all fragments of a given SRT barcode to the transposon.
@@ -260,7 +260,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
       - A 100bp extension is applied to both sides of the SRT barcode-based peak.
       - In some cases, a fragment will occur in the extension window of the fragment-based peak *and* will be <100bp from the peak start or end.
       - If that fragment is from the strand-aware most proximal position of the SRT barcode to the transposon, then the 100bp extension applied after defining the SRT barcode peak will generate a SRT barcode-based peak width > fragment-based peak width.
-- 
+
 
 ---
 
