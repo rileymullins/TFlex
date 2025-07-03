@@ -159,7 +159,7 @@ min_insertions, minlen, extend, maxbetween, minnum, lam_win_size all refer to th
 
 
 ### Supported input file formats 
-
+- The file should ***not*** have a header.
 - `.qbed`, `.bed`, `.qbed.gz`, `.bed.gz`
 - Each file must contain columns in the order:  
   `chrom`, `start`, `end`, `reads`, `strand`, `name`
@@ -168,7 +168,6 @@ min_insertions, minlen, extend, maxbetween, minnum, lam_win_size all refer to th
 
 **Example input file row**
 ```
-chr    start    end    reads    strand        name
 chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_barcode]
 ```
 
