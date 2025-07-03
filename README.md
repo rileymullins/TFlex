@@ -42,7 +42,7 @@
    For each sample, calls peaks with pycallingcards, then refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
    The peak set of each sample is saved in the `~/sample_peaks directory` within the specified output directory as a .parquet file.
 7. **Consensus peak generation:**  
-   Merges sample-specific peaks to produce consensus peaks across all samples.
+   Merges sample-specific peaks to produce consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
 8. **Read-to-peak mapping:**  
   Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
 9. **Output aggregation:**  
