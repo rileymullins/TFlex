@@ -179,6 +179,29 @@ chr    start    end    reads    strand        name
 chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_barcode]
 ```
 
+### Annotation file format
+
+This file should be a `.csv` or `.tsv` (tab-separated values) format. The columns must appear **in this order**:  
+**library_name**, **sample_barcode**, **sample_name**, **group_name**.
+
+**Example annotation file (tab-separated):**
+```
+library_name	sample_barcode	sample_name	group_name
+Library_A	AAGGCAGACG	Rep1_HyPBase	HyPBase
+Library_A	TACCGCTGAC	Rep1_TF_A	TF_A
+Library_A	AAGATTAGAC	Rep1_TF_B	TF_B
+Library_A	AGTATGACCG	Rep1_TF_C	TF_C
+Library_A	AGTATGACCG	Rep2_TF_A	TF_A
+Library_B	AAGGCAGACG	Rep2_HyPBase	HyPBase
+Library_B	TACCGCTGAC	Rep2_TF_A	TF_A
+Library_B	AAGATTAGAC	Rep2_TF_B	TF_B
+Library_B	AGTATGACCG	Rep2_TF_C	TF_C
+```
+- **All `sample_name` values must be unique.**
+- **The same `sample_name` may be used across different libraries.**
+   - In the example above, the library name will be Library_A__Library_B for Rep2_TF_A.
+   - If you want the separate libraries to be treated as independent, you must use unique labels, such as Rep2_TF_A_LibA and Rep2_TF_A_LibB.
+
 ---
 
 ## Output files
@@ -238,26 +261,6 @@ chr1   12345	  12359	 100	    +	        [library_name]/[sample_barcode]/[srt_bar
 
 ---
 
-## Input annotation file format
-
-This file should be a `.csv` or `.tsv` (tab-separated values) format. The columns must appear **in this order**:  
-**library_name**, **sample_barcode**, **sample_name**, **group_name**.
-
-**Example annotation file (tab-separated):**
-```
-library_name	sample_barcode	sample_name	group_name
-Library_A	AAGGCAGACG	Rep1_HyPBase	HyPBase
-Library_A	TACCGCTGAC	Rep1_TF_A	TF_A
-Library_A	AAGATTAGAC	Rep1_TF_B	TF_B
-Library_A	AGTATGACCG	Rep1_TF_C	TF_C
-Library_B	AAGGCAGACG	Rep2_HyPBase	HyPBase
-Library_B	TACCGCTGAC	Rep2_TF_A	TF_A
-Library_B	AAGATTAGAC	Rep2_TF_B	TF_B
-Library_B	AGTATGACCG	Rep2_TF_C	TF_C
-```
-- **All `sample_name` values must be unique.**
-
----
 
 ## Output column names with descriptions
 
