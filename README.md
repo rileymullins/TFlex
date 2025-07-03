@@ -213,8 +213,8 @@ chr1	12345	12350	100	+	[library_name]/[sample_barcode]/[srt_barcode]
 - Python 3.8+
 - [polars](https://docs.pola.rs/user-guide/installation/) (for fast DataFrame operations)
 - [pandas](https://pandas.pydata.org/docs/getting_started/install.html)
-- [pybedtools](https://pycallingcards.readthedocs.io/en/latest/#)
-- [pycallingcards](https://github.com/brwnj/pycallingcards)
+- [pybedtools](https://daler.github.io/pybedtools/main.html)
+- [pycallingcards](https://pycallingcards.readthedocs.io/en/latest/#)
 - [UMI-tools](https://umi-tools.readthedocs.io/en/latest/INSTALL.html)
 - [tqdm](https://pypi.org/project/tqdm/) (for progress bars)
 
