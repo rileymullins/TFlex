@@ -1,6 +1,32 @@
 # multiplexed_srt_tf_mapping
 Identify peaks from multiplexed self-reporting transposon data for identifying transcription factor binding sites.
 
+# Annotation file format
+This file should be a .csv or .tsv format. The columns must be in this order: library_name, sample_barcode, sample_name, group_name. Here is an example tab-separated structure:
+
+library_name	sample_barcode	sample_name	group_name
+Library_A	AAGGCAGACG	Rep1_HyPBase  HyPBase
+Library_A	TACCGCTGAC	Rep1_TF_A	TF_A
+Library_A	AAGATTAGAC	Rep1_TF_B	TF_B
+Library_A	AGTATGACCG	Rep1_TF_C	TF_C
+Library_A	TACTAGGTTG	Rep1_TF_D	TF_D
+Library_A	CTCTGGATTA	Rep1_TF_E	TF_E
+Library_A	AGTTAACGAT	Rep1_TF_F	TF_F
+Library_A	GAGACACGTC	Rep1_TF_G	TF_G
+Library_A	GTAATGCTTC	Rep1_TF_H	TF_H
+Library_A	TTAACGATCG 	Rep1_TF_I	TF_I
+Library_B	AAGGCAGACG	Rep2_HyPBase	HyPBase
+Library_B	TACCGCTGAC	Rep2_TF_A	TF_A
+Library_B	AAGATTAGAC	Rep2_TF_B	TF_B
+Library_B	AGTATGACCG	Rep2_TF_C	TF_C
+Library_B	TACTAGGTTG	Rep2_TF_D	TF_D
+Library_B	CTCTGGATTA	Rep2_TF_E	TF_E
+Library_B	AGTTAACGAT	Rep2_TF_F	TF_F
+Library_B	GAGACACGTC	Rep2_TF_G	TF_G
+Library_B	GTAATGCTTC	Rep2_TF_H	TF_H
+Library_B	TTAACGATCG 	Rep2_TF_I	TF_I
+
+
 # Variable names
 consensus_peak_id = chrom:consensus_peak_start-consensus_peak_end  
 chrom = chromosome  
