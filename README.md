@@ -42,15 +42,18 @@
    - For each sample, loads each `.parquet` file and merges rows identical in all fields except `sample_barcode_raw` and sums their reads.
    - Then peaks are called with pycallingcards on the fragments, which may or may not be associated with more than one SRT barcode.
    - The goal here is to define regions in the genome of at least on transpsoson insertion that is supported by at least 5 differentially fragmented molecules to remove noise.
-6. **SRT barcode-based peak refinement:**
+6. **Fragments-to-fragment based peak mapping within sample**
+   - The fragments of each sample are intersected to their own peak set to map the fragments to the peaks.
+   - This is required for step 7.
+7. **SRT barcode-based peak refinement:**
    - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
    - This step will also count the number of unique transposon insertions (equal to unique SRT barcodes) in the fragment-based peak. The unique transposon insertions acts as the signal of TF binding.
    - The peak set of each sample is saved in the `<output_dir>/sample_peaks directory` within the specified output directory as a .parquet file.
-7. **Consensus peak generation:**  
+8. **Consensus peak generation:**  
    - Merges sample-specific peaks to produce consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
-8. **Sample peak-to-consensus peak mapping:**  
+9. **Sample peak-to-consensus peak mapping:**  
    - Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
-9. **Output aggregation:**  
+10. **Output aggregation:**  
    - Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
    - A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
 
