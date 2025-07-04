@@ -4,6 +4,7 @@ import argparse
 import logging
 import io
 import glob
+import shutil
 from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -424,22 +425,19 @@ def main():
     pybedtools_temp_dir = output_dir / "pybedtools_tmp"
     pybedtools_temp_dir.mkdir(exist_ok=True)
     pybedtools.helpers.set_tempdir(pybedtools_temp_dir)
+    
+    # ============================================================================================
+    # ==== MODIFICATION START: Memory-Efficient Loading and Partitioning ====
+    # ============================================================================================
+    logging.info("--- Phase 1: Loading, Correcting, Annotating, and Partitioning Reads (Memory-Efficiently) ---")
 
-    logging.info("--- Phase 1: Loading, Correcting, and Annotating All Reads ---")
-
-
-
-
-    # ====== 1. Input loading and barcode parsing ======
-    # Load annotation table (library_name, sample_barcode, sample_name, group_name)
+    # Load annotation table and create whitelist
     annotation_file_separator = '\t' if args.annotation_file.endswith(('.tsv', '.txt')) else ','
     annotation_df = pl.read_csv(args.annotation_file, separator=annotation_file_separator, has_header=True)
-
-    # Whitelist of valid sample barcodes (used for barcode correction)
     whitelist_sample_barcodes = annotation_df["sample_barcode"].unique().to_list()
     logging.info(f"Derived a whitelist of {len(whitelist_sample_barcodes)} barcodes from the annotation file.")
 
-    # Load all input files (qbed/bed), parse name field into library_name, sample_barcode_raw, srt_bc
+    # Find input files
     input_files = [
         file_path for ext in ("*.qbed", "*.bed", "*.qbed.gz", "*.bed.gz")
         for file_path in Path(args.input_dir).glob(ext)
@@ -448,15 +446,25 @@ def main():
         logging.error(f"No input files found directly in {args.input_dir}.")
         sys.exit(1)
 
-    all_reads_dataframes: List[pl.DataFrame] = []
-    for file_path in tqdm(input_files, desc="Reading Input Files"):
+    # Setup a temporary directory for intermediate partitioned files
+    partitioned_temp_dir = output_dir / "partitioned_temp"
+    partitioned_temp_dir.mkdir(exist_ok=True, parents=True)
+    
+    # This will store all (sample_name, library_name) pairs found in the data
+    observed_sample_library_pairs = set()
+
+    # Process each input file individually to create intermediate partitioned files
+    logging.info(f"Processing {len(input_files)} input files and writing intermediate data...")
+    for file_path in tqdm(input_files, desc="Reading Input Files and Partitioning by Sample"):
         try:
+            # Load one file
             fragment_df = pl.read_csv(
                 file_path, has_header=False, separator="\t",
                 new_columns=list(INPUT_QBED_SCHEMA.keys()),
                 schema_overrides=INPUT_QBED_SCHEMA, ignore_errors=True
             )
-            # Parse name field (column 6) of input qbed file(s): library_name/sample_barcode_raw/srt_bc
+            
+            # Parse name field and filter
             fragment_df = (
                 fragment_df
                 .filter(pl.col("chrom").is_in(VALID_CHROMOSOMES) & pl.col("name").is_not_null())
@@ -468,73 +476,89 @@ def main():
                 .drop("name")
                 .filter(pl.col("sample_barcode_raw").is_not_null())
             )
-            all_reads_dataframes.append(fragment_df)
+
+            if fragment_df.is_empty():
+                continue
+                
+            # Barcode correction (on the single file's data)
+            corrected_reads_df = perform_sample_barcode_correction(
+                fragment_df,
+                whitelist_barcodes=whitelist_sample_barcodes,
+                correction_threshold=args.sample_barcode_dist_threshold
+            )
+            
+            if corrected_reads_df.is_empty():
+                continue
+
+            # Annotation (on the single file's data)
+            annotated_reads_df = corrected_reads_df.join(
+                annotation_df, on=["library_name", "sample_barcode"], how="inner"
+            )
+            
+            if annotated_reads_df.is_empty():
+                continue
+
+            # Collect the observed (sample_name, library_name) pairs from this file's data
+            pairs_in_file = annotated_reads_df.select(["sample_name", "library_name"]).unique()
+            for row in pairs_in_file.iter_rows():
+                observed_sample_library_pairs.add(row)
+
+            # Partition this file's data by sample_name and write to temp directory
+            for sample_name_tuple, group_df in annotated_reads_df.group_by("sample_name"):
+                sample_name = sample_name_tuple[0]
+                temp_out_path = partitioned_temp_dir / f"{sample_name}_{file_path.stem}.parquet"
+                group_df.write_parquet(temp_out_path)
+
         except Exception as exc:
-            logging.error(f"Failed to read file {file_path}: {exc}", exc_info=True)
+            logging.error(f"Failed to process file {file_path}: {exc}", exc_info=True)
 
-    if not all_reads_dataframes:
-        logging.error("No valid reads could be processed from input files.")
-        sys.exit(1)
-
-    all_raw_reads_df = pl.concat(all_reads_dataframes)
-
-
-
-
-    # ====== 2. Barcode correction ======
-    # Corrects all sample_barcode_raw to expected annotation values using Hamming distance
-    corrected_reads_df = perform_sample_barcode_correction(
-        all_raw_reads_df,
-        whitelist_barcodes=whitelist_sample_barcodes,
-        correction_threshold=args.sample_barcode_dist_threshold
-    )
-
-
-
-
-    # ====== 3. Annotation ======
-    # Joins corrected reads with annotation, assigns sample_name and group_name to each read
-    annotated_reads_df = corrected_reads_df.join(
-        annotation_df, on=["library_name", "sample_barcode"], how="inner"
-    )
-    logging.info(f"Successfully corrected and annotated a total of {annotated_reads_df.height} reads.")
-
-    logging.info("--- Phase 2: Calling Peaks on Sample Data ---")
-    
-    
-    
-    
-    # ====== 4. Per-sample partitioning ======
-    # Pool all libraries for each sample_name, assign concatenated library_name, save as .parquet
+    # Consolidate the intermediate files for each sample
+    logging.info("--- Phase 2: Consolidating Sample Data and Calling Peaks ---")
     collapsed_dir = output_dir / "collapsed_per_sample"
     collapsed_dir.mkdir(exist_ok=True, parents=True)
 
-    # Map from sample_name to double-underscore-concatenated library string
-    sample_name_to_libraries = (
-        annotated_reads_df
-        .group_by("sample_name")
-        .agg([pl.col("library_name").unique().alias("libraries")])
-        .to_dicts()
-    )
+    intermediate_files = list(partitioned_temp_dir.glob("*.parquet"))
+    if not intermediate_files:
+        logging.error("No valid reads could be processed from input files.")
+        sys.exit(1)
+        
+    # Build the library string map from the pairs observed in the actual data
+    sample_to_libs_map = {}
+    for sample_name, library_name in observed_sample_library_pairs:
+        if sample_name not in sample_to_libs_map:
+            sample_to_libs_map[sample_name] = set()
+        sample_to_libs_map[sample_name].add(library_name)
+
     sample_name_to_librarystr = {
-        entry["sample_name"]: "__".join(sorted(entry["libraries"])) for entry in sample_name_to_libraries
+        sample: "__".join(sorted(list(libs)))
+        for sample, libs in sample_to_libs_map.items()
     }
 
-    # Save per-sample (pooled) fragments for downstream peak calling
-    for sample_name_tuple, group_df in annotated_reads_df.group_by("sample_name"):
-        sample_name = sample_name_tuple[0]
-        library_name_concat = sample_name_to_librarystr[sample_name]
-        group_df = group_df.with_columns(pl.lit(library_name_concat).alias("library_name"))
+    unique_sample_names = sorted(list(sample_to_libs_map.keys()))
+    logging.info(f"Found data for {len(unique_sample_names)} samples. Consolidating files.")
+
+    # Consolidate partitioned files into one file per sample
+    for sample_name in tqdm(unique_sample_names, desc="Consolidating Samples"):
+        sample_files = list(partitioned_temp_dir.glob(f"{sample_name}_*.parquet"))
+        if not sample_files:
+            continue
+            
+        sample_df = pl.read_parquet(sample_files)
+        
         out_path = collapsed_dir / f"{sample_name}.parquet"
-        if group_df.height >= args.min_rows_threshold:
-            group_df.write_parquet(out_path)
+        if sample_df.height >= args.min_rows_threshold:
+            sample_df.write_parquet(out_path)
         else:
-            logging.warning(f"Skipping sample '{sample_name}': has {group_df.height} reads, which is less than the threshold of {args.min_rows_threshold}.")
+            logging.warning(f"Skipping sample '{sample_name}': has {sample_df.height} reads, which is less than the threshold of {args.min_rows_threshold}.")
+
+    # Clean up the temporary directory
+    shutil.rmtree(partitioned_temp_dir)
 
     collapsed_files = list(collapsed_dir.glob("*.parquet"))
     if not collapsed_files:
         logging.error(f"No samples passed the min_rows_threshold. Exiting.")
         sys.exit(1)
+
 
 
 
@@ -578,7 +602,7 @@ def main():
         sample_peaks_list.append(df)
 
     if can_skip_phase2:
-        logging.info("Skipping Phase 2: All sample peaks already called and contain required columns.")
+        logging.info("Skipping Peak Calling Phase: All sample peaks already called and contain required columns.")
 
     else:
         # Run per-sample worker for each sample (in parallel, peak calling and SRT refinement)
