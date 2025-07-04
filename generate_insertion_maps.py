@@ -1,9 +1,9 @@
+# generate_insertion_maps.py
 """
 Post-processing script for a calling card pipeline.
 Generates per-sample and per-group insertion maps (bedGraph/BigWig).
-This version uses a Total Count Normalization method, calculated
-directly from the raw counts generated in this script to allow for 
-comparable visualizations.
+This version uses a robust Total Count Normalization method, calculated
+directly from the raw counts generated in this script.
 """
 import sys
 import argparse
@@ -87,7 +87,7 @@ def perform_validation_check(
     Performs a validation check by comparing the script's raw group counts
     against the main pipeline's final_results.tsv.
     """
-    logging.info("=== Validation Check ===")
+    logging.info("=== Validation that Total Unique Insertions Matches Final Output of multiplex_srt_seq_to_tf_binding.py ===")
     if not final_results.is_file():
         logging.error(f"Validation skipped: final_results.tsv not found at {final_results}")
         return
@@ -108,7 +108,7 @@ def perform_validation_check(
         )
         
         if script_sum == pipeline_sum:
-            logging.info(f"✔ Group '{g}': OK (Raw Count: {script_sum})")
+            logging.info(f"✔ Group '{g}': MATCH! (Raw Count: {script_sum})")
         else:
             logging.warning(f"✖ Group '{g}': MISMATCH! script_raw_count={script_sum} pipeline_raw_count={pipeline_sum}")
 
