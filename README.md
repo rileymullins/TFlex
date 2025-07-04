@@ -2,7 +2,7 @@ wget 'ftp://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/latest/hg38.fa.gz' -
 
 samtools faidx /Users/rileymullins/Documents/test_scripts_for_multiplex_cc_analysis/TESTING_06302025/testing_07032025/hg38_chrom_sizes.fa
 cut -f1,2 /Users/rileymullins/Documents/test_scripts_for_multiplex_cc_analysis/TESTING_06302025/testing_07032025/hg38_chrom_sizes.fa.fai > /Users/rileymullins/Documents/test_scripts_for_multiplex_cc_analysis/TESTING_06302025/testing_07032025/hg38.chrom.sizes
-![image](https://github.com/user-attachments/assets/92db3c00-8548-4ab9-9c69-938260ad2d4f)
+
 
 
 # Processing Multiplex SRT Sequencing Data to TF Binding Sites (Peaks) and Visualization Files (bedGraph, bigWig)
