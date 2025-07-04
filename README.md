@@ -43,7 +43,7 @@
    - Saves all rows of each `sample_name` as a `.parquet` file for efficient downstream processing.
    - The .parquet of each sample is saved in the `<output_dir>/collapsed_per_sample directory` within the specified output directory.
      
-### Phase 2: Calling Peaks on Sample Data
+### Phase 2: Calling Peaks on Each Sample's Data
 5. **Fragment-based peak calling:**  
    - For each sample, loads each partitioned `.parquet` file and merges rows identical in all fields except `sample_barcode_raw` and sums their reads.
    - Then peaks are called with pycallingcards on these fragments, which may or may not be associated with more than one SRT barcode.
