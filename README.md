@@ -1,6 +1,9 @@
-# multiplex_srt_seq_to_tf_binding.py
-- Convert aligned sequencing data of multiplexed self-reporting transposon sequencing data into putative transcription factor binding sites.
-- The output of this script is used in DESeq2 to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
+# Processing Multiplex SRT Sequencing Data to TF Binding Sites (Peaks) and Visualization Files (bedGraph, bigWig)
+1. Convert aligned sequencing data of multiplexed self-reporting transposon sequencing data into putative transcription factor binding sites.
+   - This output is used to generate a count matrix DESeq2 to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
+   - The peaks enriched above above the unfused transposase (HyPBase) control are considered the true binding sites.
+2. Generate bedGraph and bigwig files of unique insertions.
+   - This output is used to for Visualization of unique insertions on gene tracks.
 
 ---
 
