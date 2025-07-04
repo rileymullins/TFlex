@@ -1,4 +1,15 @@
 # multiplex_srt_seq_to_tf_binding.py
+
+"""
+Post-alignment script to identify regions of concentrated insertions 
+representing putative TF binding sites (peaks).
+Subsequent analysis in DESeq2 can be used to identify peaks above the unfused 
+transposase (HyPBase) background control.
+Outputs per-sample input qbed partitions, per-sample fragment-based peaks,
+per-sample SRT barcode-based peaks, and the final consensus peak set.
+"""
+
+
 import os
 import sys
 import argparse
