@@ -1,6 +1,7 @@
 # generate_insertion_maps.py
 """
-Post-processing script for a calling card pipeline.
+Post-alignment script to generate files for genome browser/gene track 
+visualizations of unique transposon insertions.
 
 Outputs bedGraph and bigWig files of raw and normalized insertion events
 per-sample and per-group.
