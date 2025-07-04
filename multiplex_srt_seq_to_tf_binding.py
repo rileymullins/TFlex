@@ -135,6 +135,7 @@ def perform_sample_barcode_correction(
     Only barcodes within the allowed threshold are retained (barcode correction step).
     Returns a DataFrame with corrected sample barcodes.
     """
+    # ====== MAJOR STEP: BARCODE CORRECTION LOGIC ======
     unique_raw_barcodes = raw_reads_df["sample_barcode_raw"].unique().to_list()
     whitelist_set = set(whitelist_barcodes)
     barcode_correction_map = {}
@@ -183,6 +184,7 @@ def process_pooled_sample_data(task: tuple, annotation_df: Optional[pl.DataFrame
     sample_parquet_path = Path(sample_parquet_path_str)
 
     try:
+        # ====== MAJOR STEP: 5a. LOAD AND PREPARE SAMPLE DATA ======
         # Load the pooled fragment data for this sample_name from the .parquet file
         sample_fragments_df = pl.read_parquet(sample_parquet_path)
         
@@ -195,6 +197,7 @@ def process_pooled_sample_data(task: tuple, annotation_df: Optional[pl.DataFrame
             row = annotation_df.filter(pl.col("sample_name") == sample_name)
             group_name = row["group_name"][0] if row.height > 0 else None
 
+        # ====== MAJOR STEP: 5b. FRAGMENT-LEVEL DEDUPLICATION ======
         # Deduplicate rows/fragments that are unique only due to a sequencing error in the same barcode (i.e., only unique in 'sample_barcode_raw' value).
         # This deduplicated dataframe is used for intersecting fragments with fragment-based peaks too.
         logging.info(f"[{sample_name}] Performing fragment-level deduplication: merging rows identical in all fields except only 'sample_barcode_raw' and summing 'reads'.")
@@ -216,7 +219,7 @@ def process_pooled_sample_data(task: tuple, annotation_df: Optional[pl.DataFrame
 
 
 
-        # ========== 5. Fragment-based peak calling ==========
+        # ====== MAJOR STEP: 6. FRAGMENT-BASED PEAK CALLING ======
         # Run peak caller on all fragments/qbed rows (ignoring SRT barcodes at this stage)
         pycc_fragments_df = (
             sample_fragments_df
@@ -240,8 +243,9 @@ def process_pooled_sample_data(task: tuple, annotation_df: Optional[pl.DataFrame
 
 
 
-        # ========== 6. Intersect fragments with fragment-based peaks to map fragments to fragment-based peaks ==========
+        # ====== MAJOR STEP: 7. MAP FRAGMENTS TO PEAKS ======
         # Determines which fragments are in each called peak (to be refined by SRT barcodes)
+        # Intersect fragments with fragment-based peaks to map fragments to fragment-based peaks
         bed_fragments_df = sample_fragments_df.select(
             ["chrom", "start", "end", "strand", "srt_bc", "reads"]
         ).to_pandas()
@@ -261,7 +265,8 @@ def process_pooled_sample_data(task: tuple, annotation_df: Optional[pl.DataFrame
 
 
 
-        # ========== 7. SRT barcode-based peak refinement and per-sample stats ==========
+        # ====== MAJOR STEP: 8a. REFINE PEAKS WITH SRT BARCODES ======
+        # SRT barcode-based peak refinement and per-sample stats
         # Loop over all fragment-based peaks, refining boundaries by SRT barcode logic
         refined_peak_boundaries = []
         for peak_id, peak_group_df in intersected_df.group_by("sample_peak_id_peak"):
@@ -331,6 +336,7 @@ def process_pooled_sample_data(task: tuple, annotation_df: Optional[pl.DataFrame
             if srt_bc_peak_start is None or srt_bc_peak_end is None or srt_bc_peak_start >= srt_bc_peak_end:
                 continue
 
+            # ====== MAJOR STEP: 8b. COMPUTE PER-SAMPLE PEAK STATISTICS ======
             # Compute all per-sample stats for this peak
             fragment_peak_start = peak_group_df["fragment_peak_start_for_sample_peak"][0]
             fragment_peak_end = peak_group_df["fragment_peak_end_for_sample_peak"][0]
@@ -383,7 +389,7 @@ def main():
     """
     
     Major steps:
-    1. Input loading and barcode parsing
+    1. Input loading
     2. Barcode correction
     3. Annotation
     4. Per-sample partitioning
@@ -426,11 +432,11 @@ def main():
     pybedtools_temp_dir.mkdir(exist_ok=True)
     pybedtools.helpers.set_tempdir(pybedtools_temp_dir)
     
-    # ============================================================================================
-    # ==== MODIFICATION START: Memory-Efficient Loading and Partitioning ====
-    # ============================================================================================
+    
+    
     logging.info("--- Phase 1: Loading, Correcting, Annotating, and Partitioning Reads (Memory-Efficiently) ---")
-
+    
+    # ==== Set a dedicated temporary directory for pybedtools ====
     # Load annotation table and create whitelist
     annotation_file_separator = '\t' if args.annotation_file.endswith(('.tsv', '.txt')) else ','
     annotation_df = pl.read_csv(args.annotation_file, separator=annotation_file_separator, has_header=True)
@@ -457,6 +463,7 @@ def main():
     logging.info(f"Processing {len(input_files)} input files and writing intermediate data...")
     for file_path in tqdm(input_files, desc="Reading Input Files and Partitioning by Sample"):
         try:
+            # ====== STEP 1: INPUT LOADING ======
             # Load one file
             fragment_df = pl.read_csv(
                 file_path, has_header=False, separator="\t",
@@ -480,6 +487,7 @@ def main():
             if fragment_df.is_empty():
                 continue
                 
+            # ====== STEP 2: BARCODE CORRECTION ======
             # Barcode correction (on the single file's data)
             corrected_reads_df = perform_sample_barcode_correction(
                 fragment_df,
@@ -490,6 +498,7 @@ def main():
             if corrected_reads_df.is_empty():
                 continue
 
+            # ====== STEP 3: ANNOTATION ======
             # Annotation (on the single file's data)
             annotated_reads_df = corrected_reads_df.join(
                 annotation_df, on=["library_name", "sample_barcode"], how="inner"
@@ -503,6 +512,7 @@ def main():
             for row in pairs_in_file.iter_rows():
                 observed_sample_library_pairs.add(row)
 
+            # ====== STEP 4: PER-SAMPLE PARTITIONING ======
             # Partition this file's data by sample_name and write to temp directory
             for sample_name_tuple, group_df in annotated_reads_df.group_by("sample_name"):
                 sample_name = sample_name_tuple[0]
@@ -563,7 +573,7 @@ def main():
 
 
 
-    # ====== 5. Fragment-based peak calling, 6.Fragments-to-fragment-based peak mapping (intersection), and 7. SRT barcode-based peak refinement ======
+    # ====== 5. Fragment-based peak calling, 6. Fragments-to-fragment-based peak mapping (intersection), and 7. SRT barcode-based peak refinement ======
     # See def process_pooled_sample_data for how 5, 6, and 7 are coded.
     
     # For each sample, call peaks and perform SRT barcode-based refinement in parallel
