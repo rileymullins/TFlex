@@ -19,7 +19,7 @@ from tqdm import tqdm
 from umi_tools import UMIClusterer
 import numpy as np
 
-VERSION = "3.1.0"  # Version updated for self-contained normalization
+VERSION = "1.0.0" 
 
 
 def setup_logging(output_dir: Path) -> None:
