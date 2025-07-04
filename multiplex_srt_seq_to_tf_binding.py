@@ -241,6 +241,12 @@ def process_pooled_sample_data(task: tuple, annotation_df: Optional[pl.DataFrame
             (pl.lit(f"{sample_name}_peak_") + pl.arange(0, initial_peaks_df.height).cast(pl.Utf8)).alias("sample_peak_id")
         )
 
+        # Save these initial fragment peaks.
+        if output_dir is not None:
+            fragment_peaks_dir = output_dir / "fragment_peaks"
+            fragment_peaks_dir.mkdir(exist_ok=True, parents=True)
+            fragment_peaks_path = fragment_peaks_dir / f"{sample_name}_fragment_peaks.parquet"
+            initial_peaks_df.write_parquet(fragment_peaks_path)
 
 
         # ====== MAJOR STEP: 7. MAP FRAGMENTS TO PEAKS ======
@@ -307,34 +313,74 @@ def process_pooled_sample_data(task: tuple, annotation_df: Optional[pl.DataFrame
                 # Enforce minimum unique fragments in peak (removes noisy peaks)
                 continue
 
-            # For each unique SRT barcode, locate most proximal position per strand
-            srt_bc_data = deduped_frags_df.group_by("srt_bc_rep").agg(
-                pl.col("start").max().alias("srt_bc_max_start"),
-                pl.col("end").min().alias("srt_bc_min_end"),
-                pl.col("strand").first().alias("strand")
+
+
+
+
+            # ============================================================ #
+            # CRITICAL LOGIC OF DEFINING SRT BARCODE-BASED PEAK BOUNDARIES #
+            # ============================================================ #
+
+            
+            # Make a dataframe of '+' strand fragments that has the min 'end' value across all fragments of each SRT barcode listed.
+                # The 'end' value for '+' strand fragments is the true end of the read as it came off the sequencer.
+            # The reads of '+' strand fragments move 5' <- 3' (opposite of convention).
+                # The most 5' (upstream, smallest) value is the the most proximal to the true transposon/genomic DNA junction.
+                
+            plus_strand_frags = deduped_frags_df.filter(pl.col("strand") == "+")
+            plus_strand_coords = (
+                plus_strand_frags.group_by("srt_bc_rep")
+                .agg(pl.min("end"))["end"]  # The "end" value for '+' strand coords is the true end of the read as it came off the sequencer. This selects the smallest (most upstream)'end' value per SRT barcode.
+                .to_list()
+            )
+            
+            
+            
+            # Make a dataframe of '-' strand fragments that has the max start value of all fragments of each SRT barcode listed.
+                # The 'start' value for '-' strand coords is the true end of the read as it came off the sequencer.
+            # The reads of '-' strand fragments move 5' -> 3' (opposite of convention).
+                # The most 3' (downstream, largest) value is the the most proximal to the true transposon/genomic DNA junction.
+                
+            minus_strand_frags = deduped_frags_df.filter(pl.col("strand") == "-")
+            minus_strand_coords = (
+                minus_strand_frags.group_by("srt_bc_rep")
+                .agg(pl.max("start"))["start"]# The "start" value for '-' strand coords is the true end of the read as it came off the sequencer. This selects the largest (most downstream) 'start' value per SRT barcode.
+                .to_list()
             )
 
-            # SRT barcode-based boundary refinement (strand-aware: plus/minus)
-            plus_strand_ends = srt_bc_data.filter(pl.col("strand") == "+")["srt_bc_min_end"]
-            minus_strand_starts = srt_bc_data.filter(pl.col("strand") == "-")["srt_bc_max_start"]
 
-            min_end_plus = plus_strand_ends.min() if not plus_strand_ends.is_empty() else None
-            max_start_minus = minus_strand_starts.max() if not minus_strand_starts.is_empty() else None
 
-            # Assign SRT-BC peak region using strand-aware logic (±100bp)
-            if min_end_plus is not None and max_start_minus is not None: # Fragments on both strands situation.
-                srt_bc_peak_start = max(0, min(min_end_plus, max_start_minus) - 100)
-                srt_bc_peak_end = max(min_end_plus, max_start_minus) + 100
-            elif min_end_plus is not None: # Fragments only on minus strand situation.
-                srt_bc_peak_start = max(0, min_end_plus - 100)
-                srt_bc_peak_end = min_end_plus + 100
-            elif max_start_minus is not None:# Fragments only on plus strand situation.
-                srt_bc_peak_start = max(0, max_start_minus - 100)
-                srt_bc_peak_end = max_start_minus + 100
+            # Combine all coordinates into one to make the peak boundary definitions simpler
+            all_coords = plus_strand_coords + minus_strand_coords
+            
+            
+            # Define SRT barcode-based peak boundaries
+            if all_coords:
+            
+                # min of all_coords can be used because the strand-aware selection of the most proximal coordinate per SRT barcode has already been selected. Therefore, the min is the most upstream (smallst) position of the fragment that is the closest to the transpsoson per SRT barcode; it is the best approximation of where the most 5' unique insertion occurred. Thus, it's the best approximation of the SRT barcode-bound start of the peak.
+                min_coord = min(all_coords)
+                
+                
+                # Same rationale as for the min(all_coords), but now max is defined as the most downstream (largest) position; it is the best approximation of where the most 3' unique insertion occurred. Thus, it's the best approximation of the SRT barcode-bound end of the peak.
+                max_coord = max(all_coords)
+                
+                
+                # The SRT barcode-based peak has a hard coded 100 bp extension to the min_coord (-100) and max_coord (+100). This is to build in a margin of error when defining the SRT barcode-based peak.
+                # Generation of the consensus peaks through merging overlapping peaks is a second margin of error layer used.
+            
+                srt_bc_peak_start = max(0, min_coord - 100) # This prevents the the start coordinate being below 0.
+                srt_bc_peak_end = max_coord + 100
+                
             else:
+                # This case should not be reached if deduped_frags_df is not empty, but included anyways.
                 continue
-            if srt_bc_peak_start is None or srt_bc_peak_end is None or srt_bc_peak_start >= srt_bc_peak_end:
-                continue
+            
+            # ============================================================ #
+            # END SECTION ON DEFINING SRT BARCODE-BASED PEAK BOUNDARIES    #
+            # ============================================================ #
+
+
+
 
             # ====== MAJOR STEP: 8b. COMPUTE PER-SAMPLE PEAK STATISTICS ======
             # Compute all per-sample stats for this peak
