@@ -1,3 +1,5 @@
+wget 'ftp://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/latest/hg38.fa.gz' -O  ,<output_dir>/hg38.fa.gz
+
 # Processing Multiplex SRT Sequencing Data to TF Binding Sites (Peaks) and Visualization Files (bedGraph, bigWig)
 1. ***multiplex_srt_seq_to_tf_binding.py*** - Convert aligned sequencing data of multiplexed self-reporting transposon sequencing data into putative transcription factor binding sites.
    - This output is used to generate a count matrix DESeq2 to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
