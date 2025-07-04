@@ -1,9 +1,9 @@
-# generate_insertion_maps.py
 """
 Post-processing script for a calling card pipeline.
 Generates per-sample and per-group insertion maps (bedGraph/BigWig).
-This version uses a robust Total Count Normalization method, calculated
-directly from the raw counts generated in this script.
+This version uses a Total Count Normalization method, calculated
+directly from the raw counts generated in this script to allow for 
+comparable visualizations.
 """
 import sys
 import argparse
