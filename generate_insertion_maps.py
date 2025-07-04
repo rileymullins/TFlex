@@ -2,8 +2,9 @@
 """
 Post-processing script for a calling card pipeline.
 Generates per-sample and per-group insertion maps (bedGraph/BigWig).
-This version uses a robust Total Count Normalization method, calculated
-directly from the raw counts generated in this script.
+This version uses a total count normalization based on the geometric mean of 
+unique SRT barcode counts of all groups, calculated directly from the 
+raw counts generated in this script.
 """
 import sys
 import argparse
