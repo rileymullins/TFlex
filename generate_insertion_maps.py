@@ -1,8 +1,11 @@
 # generate_insertion_maps.py
 """
 Post-processing script for a calling card pipeline.
-Generates per-sample and per-group insertion maps (bedGraph/BigWig).
-This version uses a total count normalization based on the geometric mean of 
+
+Outputs bedGraph and bigWig files of raw and normalized insertion events
+per-sample and per-group.
+
+This script uses a count normalization based on the geometric mean of 
 unique SRT barcode counts of all groups, calculated directly from the 
 raw counts generated in this script.
 """
