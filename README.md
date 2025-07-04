@@ -26,13 +26,13 @@
 
 ---
 
-## Description of data processing script
+## Description of multiplex_srt_seq_to_tf_binding.py script
 - This pipeline processes multiplexed self-reporting transposon data to identify transcription factor (TF) binding sites.
 - It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
 
  ![Picture1](https://github.com/user-attachments/assets/dd45c0cc-8132-4d65-af3a-1b24befb073c)
 
-## Pipeline steps
+## Pipeline steps 
 ### Phase 1: Loading, Correcting, and Annotating All Reads
 1. **Input loading and barcode parsing:**  
    - Reads all qbed/bed files and parses the `name` field into `library_name`, `sample_barcode_raw`, and `srt_bc`.
@@ -70,7 +70,7 @@
    - A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
 
 
-## Usage
+## Usage of multiplex_srt_seq_to_tf_binding.py
 ### Dependencies
 
 The following packages and versions were used to create and test this script using **Python 3.12.10**:
@@ -212,7 +212,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
 
 ---
 
-## Output files
+## Output files of multiplex_srt_seq_to_tf_binding.py
 
 - `<output_dir>/final_results.tsv`  
   Tab-separated table containing all peak and sample statistics. See variable definitions below.
@@ -228,7 +228,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
   Temporary files for bedtools operations (auto-cleaned at completion).
   
 ---
-## Key details of data processing
+## Key details of data processing (applies to both multiplex_srt_seq_to_tf_binding.py and generate_insertion_maps.py)
 
 ### 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
 - The R2 read end is reported in the input file.
@@ -279,7 +279,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
 ---
 
 
-## Output column names with descriptions
+## Output column names with descriptions of multiplex_srt_seq_to_tf_binding.py
 
 | Variable | Description |
 |---|---|
