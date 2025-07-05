@@ -253,7 +253,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
 | consensus_peak_width | width (end – start) of final merged, pan-dataset consensus peak |
 | num_samples_in_consensus_peak | number of unique sample_name values in this consensus peak |
 | num_groups_in_consensus_peak | number of unique group_name values in this consensus peak |
-| sample_name | sample identifier (from annotation file). **Must be unique.** This is the peak calling unit; could be a replicate (e.g., replicate-1_TF-A), a unique time point (e.g., timepoint1_replicate1_TF-A), or a unique experimental condition (e.g., drugX_replicate1_TF-A). |
+| sample_name | sample identifier (from annotation file). This is the peak calling unit; could be a replicate (e.g., replicate-1_TF-A), a unique time point (e.g., timepoint1_replicate1_TF-A), or a unique experimental condition (e.g., drugX_replicate1_TF-A). |
 | group_name | group identifier (from annotation file). Used to aggregate stats across samples belonging to the same broader group. Examples: "TF_A", "timepoint1_TF-A", or "drugX_TF-A". |
 | fragment_peak_start_for_sample | fragment-based peak start coordinate for this sample_name |
 | fragment_peak_end_for_sample | fragment-based peak end coordinate for this sample_name |
