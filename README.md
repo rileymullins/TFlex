@@ -293,7 +293,10 @@ Requires all dependencies from Script 1, plus:
 |---|---|---|
 | [numpy](https://numpy.org/install/) | 1.26.4+ | Numerical operations for binning |
 | [pyBigWig](https://pypi.org/project/pyBigWig/) | 0.3.22+ | Reading/writing BigWig files |
-| [bedGraphToBigWig](http://hgdownload.soe.ucsc.edu/admin/exe/) | (any) | (UCSC tool, required externally) |
+| [bedGraphToBigWig](http://hgdownload.soe.ucsc.edu/admin/exe/) | (any) | (UCSC tool for bedGraph to bigWig conversion) |
+
+- Also, chrom.sizes files are needed bigWig file generation. Those for hg38 are provided in this repo.
+
 
 #### Installation
 
@@ -318,7 +321,6 @@ python generate_insertion_maps.py \
     --workers 8 \
     --sum_window_size 50
 ```
-- The two .chrom.sizes files for hg38 are provided in this repo.
 
 #### Arguments
 * `--output_dir_of_multiplex_srt_seq_to_tf_binding`: **(Required)** Path to the output directory from Script 1.
@@ -365,9 +367,9 @@ All files are saved within the `--ins_map_output_dir`.
 - **Fragment-based peaks:** Peaks called from the initial input qbed file where every row represents one uniquely fragmented molecule for which the read ended at a different position.
 - **SRT barcode-based peaks:** Refined fragment-based peaks where the start and end coordinates are defined based on the unique SRT barcode positions within the peak.
 
-  - Peak start = the **smallest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
+  - **Peak start** = the **smallest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
     - This represents the most **upstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
-  - Peak end = the **largest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
+  - **Peak end** = the **largest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
     - This represents the most **downstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
   - There is a 100bp extension applied to both ends of the SRT barcode-based peak.
     - If the SRT barcode-based peak has only fragments of one SRT barcode, then the width would be 0. With 100bp extension to either side, this becomes 200.
