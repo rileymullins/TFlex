@@ -1,10 +1,11 @@
-# Processing Multiplex SRT Sequencing Data to TF Binding Sites (Peaks) and Visualization Files (bedGraph, bigWig)
+# Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization 
 1. ***multiplex_srt_seq_to_tf_binding.py***
    - Convert aligned sequencing data of multiplexed self-reporting transposon sequencing data into putative transcription factor binding sites.
    - This output is used to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
    - The peaks enriched above above the unfused transposase (HyPBase) control are considered the true binding sites.
 
-2. ***generate_insertion_maps.py*** - Generate bedGraph and bigwig files of unique insertions.
+2. ***generate_insertion_maps.py***
+   - Generate bedGraph and bigwig files of unique transposon insertions.
    - This output is used to for visualization of unique insertions on gene tracks.
 
 ---
