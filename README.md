@@ -1,6 +1,7 @@
 # Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization Files
 
-This repository contains a bioinformatics pipeline for processing multiplexed self-reporting transposon (SRT) sequencing data. The primary goal is to identify putative transcription factor (TF) binding sites (peaks) from raw sequencing reads and generate standard visualization files (bedGraph, BigWig) for genomic analysis.
+This repository contains scripts for processing multiplexed self-reporting transposon (SRT) sequencing data. 
+The main goal is to identify putative transcription factor (TF) binding sites (peaks) from raw sequencing reads, generate standard visualization files (bedGraph, BigWig) for genomic analysis, and generate DESeq2 dataset object for identifying peaks above control.
 
 ---
 
@@ -14,7 +15,7 @@ This repository contains a bioinformatics pipeline for processing multiplexed se
   - [Output Files](#output-files-of-multiplex_srt_seq_to_tf_bindingpy)
   - [Output Column Definitions](#output-column-definitions)
 - [Script 2: `generate_insertion_maps.py`](#script-2-generate_insertion_mapspy)
-  - [Workflow](#workflow)
+  - [Pipeline Steps](#workflow)
   - [Usage](#usage-of-generate_insertion_mapspy)
   - [Output Files](#output-files-of-generate_insertion_mapspy)
 - [Key Data Processing Details](#key-data-processing-details)
