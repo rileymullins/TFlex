@@ -247,8 +247,8 @@ def process_sample_insertions(task: tuple) -> Optional[pl.DataFrame]:
     except Exception as e:
         logging.error(f"Error in sample {sample_name}: {e}", exc_info=True)
         return None
-
-
+        
+        
 def generate_binned_sum_track(
     group_name: str,
     normalized_bw_path: Path,
@@ -257,24 +257,19 @@ def generate_binned_sum_track(
 ) -> None:
     """
     Generates a BigWig track of summed signals in fixed windows from an input BigWig file.
-    This version uses a NumPy-based approach to read all values for a chromosome
-    into memory and perform a binned summation of exact N base pairs.
-    
-    The values are summed per bin, not averaged, because each unique insertion event
-    is a discrete, unique event that we have pinpointed to a single coordinate. 
-    Therefore, the sum of these events displays the total unique insertion events occurring within the bin.
+    Uses true half-open intervals [start, end) so that adjacent bins tile the genome
+    without overlap or gaps, and render correctly in genome browsers.
 
     Args:
         group_name: Name of the experimental group.
         normalized_bw_path: Path to the input normalized BigWig file.
-        window_size: The size of the window in base pairs for summing counts.
-        output_dir_bw: The output directory for the binned BigWig file.
+        window_size: Size of each bin in base pairs.
+        output_dir_bw: Directory for the output binned BigWig.
     """
     logging.info(f"--- Generating binned sum track for group '{group_name}' (window: {window_size} bp) ---")
     binned_bw_path = output_dir_bw / f"{group_name}.sum_{window_size}bp.bw"
 
     try:
-        # Open input and output BigWig files.
         bw_in = pyBigWig.open(str(normalized_bw_path))
         if not bw_in:
             logging.error(f"Could not open input BigWig: {normalized_bw_path}")
@@ -286,60 +281,44 @@ def generate_binned_sum_track(
             bw_in.close()
             return
 
-        # Transfer the header (chromosome names and sizes) to the new file.
+        # Transfer header (chrom sizes)
         bw_out.addHeader(list(bw_in.chroms().items()))
 
-        # Process each chromosome.
         for chrom, chrom_len in bw_in.chroms().items():
-            if chrom_len < window_size:
+            if chrom_len == 0:
                 continue
 
-            # This reads all values for a chromosome into a NumPy array.
-            arr = bw_in.values(chrom, 0, chrom_len, numpy=True)
-            # Replace NaNs (bases with no signal) with 0 for summation.
-            arr = np.nan_to_num(arr)
-            # Create an array of start indices for each bin.
-            idx = np.arange(0, chrom_len, window_size)
-            # Use reduceat to sum values in each bin.
-            sums = np.add.reduceat(arr, idx)
+            # Load per-base signal, replace NaN with 0
+            arr = np.nan_to_num(bw_in.values(chrom, 0, chrom_len, numpy=True))
+            num_bins = math.ceil(chrom_len / window_size)
 
-        # Find the indices of all bins with a summed value greater than zero.
-        nonzero_bins = np.where(sums > 0)[0]
+            all_starts, all_ends, all_values = [], [], []
+            for i in range(num_bins):
+                start = i * window_size
+                # Use half-open intervals [start, end)
+                end = min(start + window_size, chrom_len)
 
-        # Only proceed to build BigWig entries if there is at least one non‐empty bin.
-        if nonzero_bins.size:
+                # Sum exactly window_size bases (or fewer for last bin)
+                bin_sum = arr[start:end].sum()
+                if bin_sum > 0:
+                    all_starts.append(start)
+                    all_ends.append(end)
+                    all_values.append(float(bin_sum))
 
-            # Compute the start coordinate for each non‐empty bin.
-            # Each bin index i corresponds to genomic range
-            #   [i * window_size, (i + 1) * window_size)
-            # so we multiply the bin indices by window_size.
-            # This is also converted to a Python list because pyBigWig.addEntries expects
-            # a standard Python list.
-            starts = (nonzero_bins * window_size).tolist()
+            if all_starts:
+                bw_out.addEntries(
+                    [chrom] * len(all_starts),
+                    all_starts,
+                    ends=all_ends,
+                    values=all_values
+                )
 
-            # Compute the end coordinate for each bin.
-            # For each start s, end = min(s + window_size, chrom_len), with chrom_len in there to ensure chromosome end isn't overshot in the final bin.
-            ends = [min(s + window_size, chrom_len) for s in starts]
-
-            # Extract the summed values for each non‐empty bin.
-            # Iterate over each index in nonzero_bins and pull sums[i]. Converting to float for pyBigWig.
-            values = [float(sums[i]) for i in nonzero_bins]
-
-            # Build a list of chromosome names for each interval.
-            # In this function, each chromosome is processed on its own, so the chromosome for the interval is listed repeatedly for
-            # however many intervals there are, which is len(starts)
-            chroms = [chrom] * len(starts)
-
-            # Write all of this chromosome’s non‐empty bins to the output BigWig in one call.
-            # addEntries takes four parallel lists: chroms, starts, ends, values.
-            bw_out.addEntries(chroms, starts, ends=ends, values=values)
-
-        # Close files to finalize writing and build the BigWig index.
         bw_in.close()
         bw_out.close()
-        logging.info(f"✅ Successfully created fast binned BigWig: {binned_bw_path}")
+        logging.info(f"✅ Successfully created half-open binned BigWig: {binned_bw_path}")
     except Exception as e:
-        logging.error(f"Binned sum for '{group_name}' failed: {e}")
+        logging.error(f"Binned sum generation for '{group_name}' failed: {e}", exc_info=True)
+
 
 
 def main():
