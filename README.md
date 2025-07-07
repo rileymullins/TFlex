@@ -1,28 +1,31 @@
 # Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization 
-1. ***multiplex_srt_seq_to_tf_binding.py***
+1. ***multiplex_srt_seq_first_pass_peaks.py***
    - Convert aligned sequencing data of multiplexed self-reporting transposon sequencing data into putative transcription factor binding sites.
-   - This output is used to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
+   - This output is used in DESeq2 to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
    - The peaks enriched above above the unfused transposase (HyPBase) control are considered the true binding sites.
-
+     
 2. ***generate_insertion_maps.py***
    - Generate bedGraph and bigwig files of unique transposon insertions.
    - This output is used to for visualization of unique insertions on gene tracks.
+     
+3. ***generate_final_binding_regions.py***
+   - UPDATE   
 
 ---
 
 ## Table of Contents
 
 - [Overview of the Method](#overview-of-the-method)
-- [Script 1: `multiplex_srt_seq_to_tf_binding.py`](#script-1-multiplex_srt_seq_to_tf_bindingpy)
+- [Script 1: `multiplex_srt_seq_first_pass_peaks.py`](#script-1-multiplex_srt_seq_first_pass_peakspy)
     - [Pipeline steps](#pipeline-steps)
-    - [Usage of multiplex_srt_seq_to_tf_binding.py](#usage-of-multiplex_srt_seq_to_tf_bindingpy)
-    - [Output files of multiplex_srt_seq_to_tf_binding.py](#output-files-of-multiplex_srt_seq_to_tf_bindingpy)
-    - [Output column names with descriptions of multiplex_srt_seq_to_tf_binding.py](#output-column-names-with-descriptions-of-multiplex_srt_seq_to_tf_bindingpy)
+    - [Usage of multiplex_srt_seq_first_pass_peaks.py](#usage-of-multiplex_srt_seq_first_pass_peakspy)
+    - [Output files of multiplex_srt_seq_first_pass_peaks.py](#output-files-of-multiplex_srt_seq_first_pass_peakspy)
+    - [Output column names with descriptions of multiplex_srt_seq_first_pass_peaks.py](#output-column-names-with-descriptions-of-multiplex_srt_seq_first_pass_peakspy)
 - [Script 2: `generate_insertion_maps.py`](#script-2-generate_insertion_mapspy)
     - [Workflow](#workflow)
     - [Usage of `generate_insertion_maps.py`](#usage-of-generate_insertion_mapspy)
     - [Output Files of `generate_insertion_maps.py`](#output-files-of-generate_insertion_mapspy)
-- [Key details of data processing](#key-details-of-data-processing-applies-to-both-multiplex_srt_seq_to_tf_bindingpy-and-generate_insertion_mapspy)
+- [Key details of data processing](#key-details-of-data-processing-applies-to-both-multiplex_srt_seq_first_pass_peakspy-and-generate_insertion_mapspy)
     - [Read orientation in relation to the tranpsoson](#strand-start-end-and-read-orientation-in-relation-to-the-tranpsoson)
     - [Logic for converting fragment-based peaks to SRT barcode-based peaks](#key-logic-for-converting-the-fragment-based-peaks-to-srt-barcode-based-peaks)
     - [Logic for visualization](#key-logic-for-visualization)
@@ -49,7 +52,7 @@ The method is antibody-independent and semi-multiplexed. Because both the sample
 
 ---
 
-## Script 1: `multiplex_srt_seq_to_tf_binding.py`
+## Script 1: `multiplex_srt_seq_first_pass_peaks.py`
 - This pipeline processes multiplexed self-reporting transposon data to identify transcription factor (TF) binding sites.
 - It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
 
@@ -94,7 +97,7 @@ The method is antibody-independent and semi-multiplexed. Because both the sample
     - A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
 
 
-### Usage of multiplex_srt_seq_to_tf_binding.py
+### Usage of multiplex_srt_seq_first_pass_peaks.py
 #### Dependencies
 
 The following packages and versions were used to create and test this script using **Python 3.12.10**:
@@ -137,7 +140,7 @@ bedtools --version
 ---
 #### Default parameters command line
 ```bash
-python multiplex_srt_seq_to_tf_binding.py \
+python multiplex_srt_seq_first_pass_peaks.py \
   --input_dir /path/to/qbed_files \
   --output_dir /path/to/results \
   --annotation_file /path/to/annotation_file.tsv \
@@ -225,7 +228,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	   TF_C
 
 ---
 
-### Output files of multiplex_srt_seq_to_tf_binding.py
+### Output files of multiplex_srt_seq_first_pass_peaks.py
 
 - `<output_dir>/merged_srt_barcode_based_peaks.tsv`
   Tab-separated table containing all merged (bedtools merge) peaks with per group and per sample and sample statistics. See variable definitions below.
@@ -242,7 +245,7 @@ Library_B	AGTATGACCG	Rep2_TF_C	   TF_C
 
 ---
 
-### Output column names with descriptions of multiplex_srt_seq_to_tf_binding.py
+### Output column names with descriptions of multiplex_srt_seq_first_pass_peaks.py
 
 | Variable | Description |
 |---|---|
@@ -314,7 +317,7 @@ Requires all dependencies from Script 1, plus:
 
 ```bash
 python generate_insertion_maps.py \
-    --output_dir_of_multiplex_srt_seq_to_tf_binding /path/to/main/pipeline/output \
+    --output_dir_of_multiplex_srt_seq_first_pass_peaks /path/to/main/pipeline/output \
     --ins_map_output_dir /path/to/insertion_map_results \
     --annotation_file /path/to/annotation_file.tsv \
     --chrom_sizes /path/to/hg38.chrom.sizes \
@@ -324,7 +327,7 @@ python generate_insertion_maps.py \
 ```
 
 #### Arguments
-* `--output_dir_of_multiplex_srt_seq_to_tf_binding`: **(Required)** Path to the output directory from Script 1.
+* `--output_dir_of_multiplex_srt_seq_first_pass_peaks`: **(Required)** Path to the output directory from Script 1.
 * `--ins_map_output_dir`: **(Required)** Directory to save the output insertion maps.
 * `--annotation_file`: **(Required)** The same annotation file used for Script 1.
 * `--chrom_sizes`: **(Required)** Path to a two-column, tab-separated chromosome sizes file.
@@ -340,7 +343,7 @@ All files are saved within the `--ins_map_output_dir`.
 - `binned_sum_bigwig_{window_size}bp/` (Optional)
 
 ---
-## Key details of data processing (applies to both multiplex_srt_seq_to_tf_binding.py and generate_insertion_maps.py)
+## Key details of data processing (applies to both multiplex_srt_seq_first_pass_peaks.py and generate_insertion_maps.py)
 
 ### 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
 - The R2 read end is reported in the input file.
