@@ -82,13 +82,13 @@ The method is antibody-independent and semi-multiplexed. Because both the sample
 7. **SRT barcode-based peak refinement:**
    - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
    - This step will also count the number of unique transposon insertions (equal to unique SRT barcodes) in the fragment-based peak. The unique transposon insertions acts as the signal of TF binding.
-   - Per sampel SRT barcode-based peaks are saved in `<output_dir>/sample_peaks directory` within the specified output directory as a .parquet file.
+   - Per sample SRT barcode-based peaks are saved in `<output_dir>/sample_peaks directory` within the specified output directory as a .parquet file.
 
 #### Phase 3: Generating Consensus Peaks and Final Output
 8. **Consensus peak generation:**
-   - Merges sample-specific peaks to produce consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
+   - Merges sample-specific peaks to produce SRT barcode consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
 9. **Sample peak set-to-consensus peak mapping (intersection):**
-   - Intersects all sample peak sets with the consensus peaks to map which sample peaks were merged in the consensus peak.
+   - Intersects all sample peak sets with the SRT barcode consensus peaks to map which sample peaks were merged in the SRT barcodeconsensus peak.
 10. **Output aggregation:**
     - Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
     - A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
@@ -210,14 +210,14 @@ This file should be a `.csv` or `.tsv` (tab-separated values) format. The column
 ```
 library_name	sample_barcode	sample_name	group_name
 Library_A	AAGGCAGACG	Rep1_HyPBase	HyPBase
-Library_A	TACCGCTGAC	Rep1_TF_A	TF_A
-Library_A	AAGATTAGAC	Rep1_TF_B	TF_B
-Library_A	AGTATGACCG	Rep1_TF_C	TF_C
-Library_A	AGTATGACCG	Rep2_TF_A	TF_A
+Library_A	TACCGCTGAC	Rep1_TF_A	   TF_A
+Library_A	AAGATTAGAC	Rep1_TF_B	   TF_B
+Library_A	AGTATGACCG	Rep1_TF_C	   TF_C
+Library_A	AGTATGACCG	Rep2_TF_A	   TF_A
 Library_B	AAGGCAGACG	Rep2_HyPBase	HyPBase
-Library_B	TACCGCTGAC	Rep2_TF_A	TF_A
-Library_B	AAGATTAGAC	Rep2_TF_B	TF_B
-Library_B	AGTATGACCG	Rep2_TF_C	TF_C
+Library_B	TACCGCTGAC	Rep2_TF_A	   TF_A
+Library_B	AAGATTAGAC	Rep2_TF_B	   TF_B
+Library_B	AGTATGACCG	Rep2_TF_C	   TF_C
 ```
 - **The same `sample_name` may be used across different libraries.**
   - In the example above, the library name will be Library_A__Library_B for Rep2_TF_A.
@@ -227,8 +227,8 @@ Library_B	AGTATGACCG	Rep2_TF_C	TF_C
 
 ### Output files of multiplex_srt_seq_to_tf_binding.py
 
-- `<output_dir>/final_results.tsv`
-  Tab-separated table containing all peak and sample statistics. See variable definitions below.
+- `<output_dir>/merged_srt_barcode_based_peaks.tsv`
+  Tab-separated table containing all merged (bedtools merge) peaks with per group and per sample and sample statistics. See variable definitions below.
 - `<output_dir>/column_definitions.tsv`
   Tab-separated table describing all columns in `final_results.tsv`.
 - `<output_dir>/collapsed_per_sample/sample.parquet`
