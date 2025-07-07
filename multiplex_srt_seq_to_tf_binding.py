@@ -826,7 +826,7 @@ def main():
         "group_total_insertions_in_consensus_peak",
     ]
 
-    final_output_file_path = output_dir / "final_results.tsv"
+    final_output_file_path = output_dir / "merged_srt_barcode_based_peaks.tsv"
     logging.info(f"Writing final output to {final_output_file_path}")
 
     final_results_df.select(final_output_columns).sort(["chrom", "consensus_peak_start"]).write_csv(final_output_file_path, separator="\t", null_value="NA")
