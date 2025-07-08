@@ -1,8 +1,8 @@
-#generate_final_binding_regions.py
+# generate_final_binding_regions.py 
 """
 Final peak-processing script for a calling card pipeline.
 
-This script takes pre-called peaks from SPAN2.0 for each group, resizes them, and generates
+This script takes pre-called peaks for each group, resizes them, and generates
 per-group intersection matrices. It then creates a final consensus peak set and
 uses it to generate a final consensus count matrix with insertion counts from all groups.
 """
