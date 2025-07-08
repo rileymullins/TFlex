@@ -1,4 +1,4 @@
-# multiplex_srt_seq_to_tf_binding.py
+# step_1_raw_qbed_to_fragment_peaks.py
 
 """
 Post-alignment script to identify regions of concentrated insertions 
