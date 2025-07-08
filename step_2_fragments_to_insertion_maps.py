@@ -1,4 +1,5 @@
-# generate_insertion_maps.py
+# step_2_fragments_to_insertion_maps.py
+
 """
 Post-processing script for a calling card pipeline.
 Generates per-sample and per-group insertion maps (bedGraph/BigWig).
