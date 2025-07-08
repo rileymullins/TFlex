@@ -12,7 +12,7 @@
       - **OUTPUT:** per-group and per-sample insertion maps (bedgraph, bigwig, and qbed).
      
 3. ### step_3_run_span_peak_caller.sh
-   - ***Main goal:** Call final consensus deduplicated insertion maps by selecting the fragment that is most proximal to the to the transposon for each insertion.*
+   - **Main goal:** Call final consensus deduplicated insertion maps by selecting the fragment that is most proximal to the to the transposon for each insertion.
       - **INPUT:** per-group insertion map qbed files of step 2.
       - **OUTPUT:** final per-group and pan-dataset SPAN-defined regions of concentrated insertions, representing putative peaks.
 
