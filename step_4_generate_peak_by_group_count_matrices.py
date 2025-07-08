@@ -1,4 +1,4 @@
-# generate_final_binding_regions.py 
+# step_4_generate_peak_by_group_count_matrices.py
 """
 Final peak-processing script for a calling card pipeline.
 
