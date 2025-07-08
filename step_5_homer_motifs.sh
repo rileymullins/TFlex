@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# step_5_homer_motifs.sh
 # === HOMER Motif Discovery Batch Script ===
 #
 # Runs HOMER findMotifsGenome.pl on each BED file produced by your R pipeline.
