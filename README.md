@@ -16,7 +16,7 @@
       - **INPUT:** per-group insertion map qbed files of step 2.
       - **OUTPUT:** final per-group and pan-dataset SPAN-defined regions of concentrated insertions, representing putative peaks.
 
-4. ***step_4_generate_insertion.sh***
+4. ***step_4_generate_peak_by_group_count_matrices.py***
    - ***Main goal:**: Define regions of concentrated insertions, representing putative peaks and TF binding sites.*
       - **INPUT:** per-group insertion map qbed files of step 2 and SPAN-defined insertion regions (putative peaks) of step 3.
       - **OUTPUT:** per-group insertion count matrices of each group's peaks consisting of the unique insertion count of all groups within that group's peaks.
