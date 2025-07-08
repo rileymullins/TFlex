@@ -149,7 +149,7 @@ def main():
     """Main function to orchestrate the entire workflow."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     # --- Args ---
-    p.add_argument("--output_dir_of_multiplex_srt_seq_to_tf_binding", required=True)
+    p.add_argument("--output_dir_of_step_1", required=True)
     p.add_argument("--ins_map_output_dir", required=True)
     p.add_argument("--annotation_file", required=True)
     p.add_argument("--chrom_sizes", required=True)
@@ -167,7 +167,7 @@ def main():
     if not shutil.which("bedGraphToBigWig"):
         logging.error("`bedGraphToBigWig` not found in PATH."); sys.exit(1)
     
-    base = Path(args.output_dir_of_multiplex_srt_seq_to_tf_binding)
+    base = Path(args.output_dir_of_step_1)
     sizes = Path(args.chrom_sizes)
     pybedtools_tmp_dir = out / "pybedtools_tmp"
     pybedtools_tmp_dir.mkdir(exist_ok=True, parents=True)
