@@ -1,4 +1,4 @@
-# DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R
+# step_5_DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R
 
 
 # ==============================================================================
