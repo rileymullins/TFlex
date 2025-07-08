@@ -1,6 +1,6 @@
 # Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization 
 
-##Steps:
+## Order of scripts
 1. ***multiplex_srt_seq_first_pass_peaks.py***
    - ***Main goal**: Turn initial qbed file of fragments into preliminary binding regions defined by insertions.*
    - **INPUT** qbed(s) of all fragments after initial alignemnt.
@@ -10,7 +10,7 @@
    - This output is used in DESeq2 to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
    - The peaks enriched above above the unfused transposase (HyPBase) control are considered the true binding sites.
      
-3. ***generate_insertion_maps.py***
+2. ***generate_insertion_maps.py***
    - ***Main goal**: Generate deduplicated insertion maps for by selecting the fragment that is most proximal to the to the transposon for each insertion.*
    - **INPUT** per-sample fragment-based peaks and per-sample fragments.
    - **OUTPUT** per-group and per-sample insertion maps (bedgraph, bigwig, and qbed).
@@ -18,12 +18,12 @@
    - Generate bedGraph and bigwig files of unique transposon insertions.
    - This output is used to for visualization of unique insertions on gene tracks.
      
-5. ***run_span_peak_caller.sh***
+3. ***run_span_peak_caller.sh***
    - ***Main goal**: Call final consensus deduplicated insertion maps for by selecting the fragment that is most proximal to the to the transposon for each insertion.*
    - **INPUT** per-group insertion map qbed files.
    - **OUTPUT** final per-group and pan-dataset merged binding regions identifed by SPAN peak caller for DESeq2 analysis.
       
-6. ***DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R***
+4. ***DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R***
    - **INPUT** final per-group binding regions from SPAN peak caller.
    - **OUTPUT** peaks above background (HyPBase) per group, pairwise group v group differential peaks, group v all other group differential peaks, and basic visualization plots.
 
