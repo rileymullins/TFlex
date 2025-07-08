@@ -1,30 +1,35 @@
 # Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization 
 
-## Order of scripts
-1. ***multiplex_srt_seq_first_pass_peaks.py***
+## Order to run scripts
+1. ***step_1_raw_qbed_to_fragment_peaks.py***
    - ***Main goal**: Turn initial qbed file of fragments into preliminary binding regions defined by insertions.*
    - **INPUT** qbed(s) of all fragments after initial alignemnt.
-   - **OUTPUT** per-sample fragment files and preliminary fragment-based and SRT insertion-based binding regions.
+   - **OUTPUT** per-sample fragment files and preliminary fragment peaks (peak coordinates based on first and last unique insertion in the fragment peak also output).
 
    - Convert aligned sequencing data of multiplexed self-reporting transposon sequencing data into putative transcription factor binding sites.
    - This output is used in DESeq2 to define TF binding sites that are enriched above the unfused transposase (HyPBase) control and differential peak among transcription factors.
    - The peaks enriched above above the unfused transposase (HyPBase) control are considered the true binding sites.
      
-2. ***generate_insertion_maps.py***
+2. ***step_2_fragments_to_insertion_maps.py***
    - ***Main goal**: Generate deduplicated insertion maps for by selecting the fragment that is most proximal to the to the transposon for each insertion.*
-   - **INPUT** per-sample fragment-based peaks and per-sample fragments.
+   - **INPUT** per-sample fragment-based peaks of step 1 and per-sample fragments of step 1.
    - **OUTPUT** per-group and per-sample insertion maps (bedgraph, bigwig, and qbed).
 
    - Generate bedGraph and bigwig files of unique transposon insertions.
    - This output is used to for visualization of unique insertions on gene tracks.
      
-3. ***run_span_peak_caller.sh***
+3. ***step_3_run_span_peak_caller.sh***
    - ***Main goal**: Call final consensus deduplicated insertion maps for by selecting the fragment that is most proximal to the to the transposon for each insertion.*
-   - **INPUT** per-group insertion map qbed files.
-   - **OUTPUT** final per-group and pan-dataset merged binding regions identifed by SPAN peak caller for DESeq2 analysis.
+   - **INPUT** per-group insertion map qbed files of step 2.
+   - **OUTPUT** final per-group and pan-dataset SPAN-defined regions of concentrated insertions, representing putative peaks.
+
+4. ***step_4_generate_insertion.sh***
+   - ***Main goal**: Call final consensus deduplicated insertion maps for by selecting the fragment that is most proximal to the to the transposon for each insertion.*
+   - **INPUT** per-group insertion map qbed files of step 2 and SPAN-defined insertion regions (putative peaks) of step 3.
+   - **OUTPUT** per-group insertion count matrices of each group's peaks consisting of the unique insertion count of all groups within that group's peaks.
       
-4. ***DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R***
-   - **INPUT** final per-group binding regions from SPAN peak caller.
+5. ***step_5_DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R***
+   - **INPUT** per-group insertion count matrices of step 4.
    - **OUTPUT** peaks above background (HyPBase) per group, pairwise group v group differential peaks, group v all other group differential peaks, and basic visualization plots.
 
 
