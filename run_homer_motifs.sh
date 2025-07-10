@@ -1,6 +1,7 @@
+#!/bin/bash
+
 # run_homer_motifs.sh
 
-#!/bin/bash
 
 # === HOMER Motif Discovery Batch Script ===
 #
