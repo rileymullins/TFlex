@@ -834,6 +834,15 @@ for (current_group in experimental_groups) {
   cat(cmd_annotate, "\n\n")
 }
 
+
+
+
+# COPY AND PASTE THE COMMANDS IN THE TERMINAL, RUN, AND THEN CONTINUE ON TO STEP 9B.
+
+
+
+
+
 # ---- 9b. Process HOMER Annotations and Plot Genomic Distribution ----
 # 1. Read and process each group's HOMER annotation file
 all_annotation_files <- list.files(
