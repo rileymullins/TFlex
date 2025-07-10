@@ -1,4 +1,4 @@
-# step_4_generate_peak_by_group_count_matrices.py
+# step_3_generate_peak_by_group_count_matrices.py
 """
 Final peak-processing script for a calling card pipeline.
 
@@ -20,7 +20,7 @@ import pandas as pd
 import pybedtools
 from tqdm import tqdm
 
-VERSION = "3.3.1"
+VERSION = "1.0.0"
 
 def setup_logging(output_dir: Path) -> None:
     """Initializes logging to a file and stdout."""
