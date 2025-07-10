@@ -5,732 +5,739 @@
 # PART 0: CONFIGURATION
 # ==============================================================================
 
-# ==== 1. Load Libraries ====
+# ---- 0a. Load Libraries ----
 suppressPackageStartupMessages({
-  library(AnnotationDbi)
-  library(annotatr)
-  library(biomaRt)
-  library(circlize)
-  library(ComplexHeatmap)
   library(data.table)
-  library(DESeq2)
-  library(dplyr)
-  library(forcats)
-  library(GenomicFeatures)
-  library(GenomicRanges)
-  library(ggplot2)
-  library(ggrepel)
-  library(grid)
-  library(parallel)
   library(purrr)
-  library(readr)
-  library(RColorBrewer)
   library(stringr)
   library(tibble)
-  library(tidyr)
+  library(DESeq2)
+  library(tidyverse)
+  library(parallel)
+  library(ComplexHeatmap)
+  library(RColorBrewer)
+  library(circlize)
+  library(GenomicRanges)
+  library(viridis)
+  library(janitor)
 })
 
-# ==== 2. Define Inputs & Experimental Groups ====
-# Point to the final output file from the Python script.
-input_file <- "/path/to/your/output_dir/final_results.tsv"
-annotation_file <- "/path/to/your/annotation_file"
-output_dir <- "/path/to/your/output_dir/analysis_plots"
-dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+# ---- 0b. Define Input & Output Directories ----
+python_output_dir          <- <dir of steps 1-3 outputs>
+output_dir                 <- file.path(python_output_dir, "STEP_4_output_deseq2_peak_analysis")
+per_group_peaks_dir        <- file.path(python_output_dir, ,"<step 3 output dir>/per_group_peak_matrices")
+raw_insertion_bedgraph_dir <- file.path(python_output_dir, "<step 1 output dir>/raw_unique_insertion_count_per_group_bedgraph")
 
-# Manually define the groups for the analysis.
-# The names here (e.g., "HyPBase") MUST EXACTLY MATCH the values in the 'group_name' column of your final_results and annotation_file
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# Print the possible groups to choose from.
-annotation_dataframe <- read.csv(annotation_file)
-cat("Groups to choose from:\n", paste(unique(annotation_dataframe$group_name), collapse = "\n"))
-
-# This group_map should be all groups that you want to compare against background control (HyPBase), compare all pairwise against each other,
- # and compare each against all others including the background control (HyPBase) to find group-specific peaks.
-group_map <- c(
- "group_1",
- "group_2", 
- "etc."
+# ---- 0c. Calculate Total Insertions per Group ----
+bedgraph_files <- list.files(
+  raw_insertion_bedgraph_dir,
+  pattern = "\\.bedgraph$",
+  full.names = TRUE
 )
 
-names(group_map) <- group_map # Name elements by themselves for compatibility.
+# Initialize result named numeric vector
+total_counts <- numeric()
 
-# Define experiment and control groups from your manual list.
-control_group <- "HyPBase" # This is the background control group. It will always be HyPBase. Could be HyPBase, HyPBase_timepointA, HyPBase_treatmentX, etc.
-experimental_groups <- setdiff(group_map, control_group)
-
-
-###############################################################################################
-#### SKIP TO 'PART 5: LOAD EXISTING RESULTS FROM PRIOR STEPS' IF 1-4 HAVE ALREADY BEEN RUN ####
-###############################################################################################
-
-
-
-
-# ==== 3. Data Loading and Matrix Creation ====
-# Read the `final_results.tsv` file.
-full_data <- fread(input_file)
-
-# Filter the data to ONLY include the groups specified in your manual group_map.
-full_data <- full_data %>% filter(group_name %in% group_map)
-
-# CREATE COUNT DATA: Use the group_total_insertions_in_consensus_peak column.
-count_data <- full_data %>%
-  select(consensus_peak_id, group_name, group_total_insertions_in_consensus_peak) %>%
-  distinct(consensus_peak_id, group_name, .keep_all = TRUE)
-
-# CREATE METADATA TO JOIN: Select relevant group-level statistics.
-metadata_to_join <- full_data %>%
-  select(consensus_peak_id, group_name, num_samples_in_consensus_peak,
-         group_total_fragments_in_consensus_peak, group_total_reads_in_consensus_peak) %>%
-  distinct(consensus_peak_id, group_name, .keep_all = TRUE)
-
-
-# CREATE THE COUNT MATRIX
-count_matrix <- dcast(count_data, consensus_peak_id ~ group_name,
-                      value.var = "group_total_insertions_in_consensus_peak", fill = 0)
-
-count_matrix_df <- as.data.frame(count_matrix)
-rownames(count_matrix_df) <- count_matrix_df$consensus_peak_id
-count_matrix_df$consensus_peak_id <- NULL
-
-# Ensure all groups from the manual map are present as columns and enforce order.
-missing_groups <- setdiff(group_map, colnames(count_matrix_df))
-for (group in missing_groups) {
-    count_matrix_df[[group]] <- 0
+# Loop over files
+for (file in bedgraph_files) {
+  # Read only the 4th column (V4) using fread
+  dt <- fread(file, select = 4, col.names = "V4")
+  
+  # Sum the V4 values
+  total <- sum(dt$V4)
+  
+  # Strip .bedgraph extension from filename
+  name <- sub("\\.bedgraph$", "", basename(file))
+  
+  # Store the result
+  total_counts[name] <- total
 }
-count_matrix_df <- count_matrix_df[, group_map]
 
-count_matrix_df[] <- lapply(count_matrix_df, as.integer)
-cat("Count matrix created with", nrow(count_matrix_df), "peaks and", ncol(count_matrix_df), "groups.\n\n")
+cat("Total insertion counts per group:\n")
+print(total_counts)
 
-# ==== 4. Global Normalization ====
-# The column names of count_matrix_df represent the sample or group names.
-# We create a data.frame where:
-#   row.names = sample names (colnames of the count matrix)
-#   condition = condition is set to be the same as the sample/group name (this is arbitrary here, since differential analysis is not being done here)
-# This allows DESeq2 to process the samples and assign size factors for normalization.
-col_data_all <- data.frame(
-  row.names = colnames(count_matrix_df),      # Set sample names as row names
-  condition = colnames(count_matrix_df)       # A dummy condition (each sample its own "condition")
-)
+# ---- 0d. Define Experimental Groups ----
+deseq_output_dir <- file.path(output_dir, "DESeq2_results_by_group")
+dir.create(deseq_output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# countData = count_matrix_df: the raw count matrix (rows = consensus peaks, columns = samples)
-# colData = col_data_all: sample metadata (created above)
-# design = ~ 1:
-#   No groups or conditions, just an intercept.
-#   This means DESeq2 does not model any condition effect and only will normalize counts.
-dds_all <- DESeqDataSetFromMatrix(
-  countData = count_matrix_df,
-  colData = col_data_all,
-  design = ~ 1
-)
+all_groups          <- names(total_counts)
+control_group       <- "HyPBase"
+experimental_groups <- setdiff(all_groups, control_group)
 
-# DESeq2 computes size factors to account for differences in total unique insertions
-# These factors are used to scale counts so groups can be fairly compared.
-# Size factors are stored inside dds_all.
-dds_all <- estimateSizeFactors(dds_all)
-sizeFactors(dds_all) # Print size factors to confirm they look right.
-
-# Generate a normalized counts matrix to save
-normalized_counts <- counts(dds_all, normalized = TRUE)
-
-# Save file
-norm_counts_file <- file.path(output_dir, "normalized_srt_barcode_counts_per_group_in_consensus_peaks.csv")
-fwrite(as.data.table(normalized_counts, keep.rownames = "consensus_peak_id"), file = norm_counts_file)
-cat("Normalized SRT barcode counts for groups in consensus peaks saved to:", norm_counts_file, "\n")
-
-# Calculate normalized counts per kb
-peak_widths <- full_data %>%
-  select(consensus_peak_id, consensus_peak_width) %>%
-  distinct() %>%
-  mutate(peak_width_kb = consensus_peak_width / 1000)
-
-peak_widths_ordered <- peak_widths[match(rownames(normalized_counts), peak_widths$consensus_peak_id), ]
-normalized_counts_per_kb <- normalized_counts / peak_widths_ordered$peak_width_kb
-
-norm_counts_pkb_file <- file.path(output_dir, "normalized_srt_barcode_counts_per_kb_per_group_in_consensus_peaks.csv")
-fwrite(as.data.table(normalized_counts_per_kb, keep.rownames = "consensus_peak_id"), file = norm_counts_pkb_file)
-cat("Normalized SRT barcode counts per kb for groups in consensus peaks saved to:", norm_counts_pkb_file, "\n\n")
-
-
-
-
+cat("Control group:", control_group, "\n")
+cat("Experimental groups:", paste(experimental_groups, collapse = ", "), "\n\n")
 
 # ==============================================================================
-# PART 1: GROUP vs. CONTROL ANALYSIS (ONE TAIL)
+# PART 1: PRE-PROCESSING & NORMALIZATION
 # ==============================================================================
-all_control_results_list <- list()
 
+# ---- 1a. Manual Size Factor Calculation ----
+log_geo_means       <- log(total_counts[total_counts > 0])
+geo_mean            <- exp(mean(log_geo_means))
+manual_size_factors <- total_counts / geo_mean
+names(manual_size_factors) <- names(total_counts)
+
+print(manual_size_factors)
+
+# ---- 1b. Generate Normalized Peak Matrices For Each Group ----
+normalized_peaks_dir <- file.path(output_dir, "normalized_peak_matrices")
+dir.create(normalized_peaks_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Loop over each of the peak matrices
 for (group in experimental_groups) {
-  cat("------------------------------------------------------------\n")
-  cat("Comparing:", group, "vs.", control_group, "\n")
-  cat("------------------------------------------------------------\n")
-
-  pairwise_matrix <- count_matrix_df[, c(control_group, group)] # Matrix of HyPBase and the group being processed in the loop.
-
-  # Identify rows to keep: at least one count > 0 in either the control OR the treatment group.
-  # This omits peaks that have no signal in any of the samples for this specific comparison.
-  keep_rows <- (rowSums(pairwise_matrix[, control_group, drop=FALSE], na.rm = TRUE) > 0) |  
-               (rowSums(pairwise_matrix[, group, drop=FALSE], na.rm = TRUE) > 0)
-
-  # Filter the matrix to keep only the identified rows.
-  pairwise_matrix <- pairwise_matrix[keep_rows, ]
-
-  # Generate col_data object for DESeq2
-  col_data <- data.frame(condition = factor(c("control", "treatment")), row.names = c(control_group, group))
-
-  dds <- DESeqDataSetFromMatrix(countData = pairwise_matrix, colData = col_data, design = ~ condition) # Make DESeq dataset from raw counts matrix.
-  dds <- estimateSizeFactors(dds) # Determine size factors for the comparison.
-
-  # Dispersion calculation
-   # Make a copy of the main object.
-   dds_for_disp <- dds
-   # Calculate dispersion. The ~ 1 means to treat all samples as if they belong to a single group.
-   # This effectively does the following:
-    # (1) Finds the formula that models dispersion in both datasets in the comparison and fits a curve to model that. The plot is dispersion on Y axis, total counts on X per peak.
-    # (2) Raise data points below the line up to the fitted line, increasing their dispersion.
-    # (3) Leave data points above the line where they are so that the dispersion is not decreased.
-
-   # DESeq2 will give lower log2FC values in situations when the group has 10 insertions in the peak and HyPBase has 0, so 10 v 0 will have a lower log2FC than 100 v 0.
-   design(dds_for_disp) <- formula(~ 1)
-   dds_for_disp <- estimateDispersions(dds_for_disp, fitType = "local")
-   dispersions(dds) <- dispersions(dds_for_disp)
-
-  # Run test to find peaks that are greater in the 'treatment' (group of experimental_group set of loop) relative to 'control' (HyPBase).
-  # One tailed ('greater') because the question is is the group higher than HyPBase.
-  dds <- nbinomWaldTest(dds)
-  res <- results(dds, contrast = c("condition", "treatment", "control"), altHypothesis = "greater")
-
-  # Make a plot of the dispersion for reference of what DESeq2 is doing for dispersion.
-  disp_file <- file.path(output_dir, paste0(group, "_vs_", control_group, "_diagnostic_plot_dispersion_estimates.png"))
-  png(disp_file, width = 6, height = 6, units = "in", res = 300)
-  plotDispEsts(dds_for_disp)
-  dev.off()
-
-  # Make a dataframe out of the results
-  # Note that the p value is meaningless because the comparison does not use replicates.
-  res_df <- as.data.frame(res) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    mutate(comparison = paste0(group, "_vs_", control_group))
-
-  # Generate objects to add the the metadata in the final_output.tsv file to the results dataframe
-  group_metadata <- metadata_to_join %>% filter(group_name == group) %>% select(-group_name) %>% rename_with(~ paste0(., "_", group), -consensus_peak_id)
-  control_metadata <- metadata_to_join %>% filter(group_name == control_group) %>% select(-group_name) %>% rename_with(~ paste0(., "_", control_group), -consensus_peak_id)
-
-  # Generate object to add the normalized counts in the consensus peak to results dataframe
-  norm_counts_to_add <- as.data.frame(normalized_counts) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    select(consensus_peak_id, all_of(c(group, control_group))) %>%
-    rename_with(~ paste0("norm_count_", .), -consensus_peak_id)
-
-  # Generate object to add the normalized counts per kb of consensus peak to results dataframe
-  norm_counts_pkb_to_add <- as.data.frame(normalized_counts_per_kb) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    select(consensus_peak_id, all_of(c(group, control_group))) %>%
-    rename_with(~ paste0("norm_count_pkb_", .), -consensus_peak_id)
-
-  # Generate the final results dataframe that has the metadata and counts for each comparison.
-  res_df_with_meta <- res_df %>%
-    left_join(group_metadata, by = "consensus_peak_id") %>%
-    left_join(control_metadata, by = "consensus_peak_id") %>%
-    left_join(norm_counts_to_add, by = "consensus_peak_id") %>%
-    left_join(norm_counts_pkb_to_add, by = "consensus_peak_id") %>%
-    arrange(desc(log2FoldChange), pvalue)
-
-  # Store in a list
-  all_control_results_list[[group]] <- res_df_with_meta
-
-  # Output the results dataframe.
-  output_file_full <- file.path(output_dir, paste0(group, "_vs_", control_group, "_full_results_one_tailed.csv"))
-  fwrite(res_df_with_meta, file = output_file_full, na = "NA")
-  cat("Full one-tailed results saved to:", output_file_full, "\n")
+  # Define the path for the input raw count matrix
+  matrix_file <- file.path(per_group_peaks_dir, paste0(group, "_peak_matrix.tsv"))
+  if (!file.exists(matrix_file)) {
+    warning(paste("Matrix file not found for", group, "- skipping normalization."))
+    next
+  }
+  
+  # Read the raw count matrix
+  group_peak_matrix <- fread(matrix_file)
+  
+  # Make a copy to store the normalized counts
+  normalized_matrix <- copy(group_peak_matrix)
+  
+  # Find all columns that contain raw insertion counts
+  count_cols <- grep("_insertion_count$", colnames(normalized_matrix), value = TRUE)
+  
+  # Loop through each count column to normalize it
+  for (col_name in count_cols) {
+    # 1. Get the group name from the column name
+    group_name <- sub("_insertion_count$", "", col_name)
+    
+    # 2. Find the matching size factor for that group
+    size_factor <- manual_size_factors[group_name]
+    
+    # 3. Divide the entire column by its size factor to get normalized counts.
+    normalized_matrix[, (col_name) := .SD[[col_name]] / size_factor]
+  }
+  
+  # Rename the columns to indicate they are now normalized
+  new_col_names <- sub("_insertion_count$", "_normalized_count", count_cols)
+  setnames(normalized_matrix, old = count_cols, new = new_col_names)
+  
+  # Define the output file path and save the normalized matrix
+  output_file <- file.path(normalized_peaks_dir, paste0(group, "_normalized_peak_matrix.csv"))
+  fwrite(normalized_matrix, output_file)
+  
+  cat("Saved normalized matrix for:", group, "\n")
 }
-# Note this will generate a warning: 'In qf(0.99, p, m - p) : NaNs produced'
-# Reason is that m = total samples = 1 control + 1 treatment = 2 and p = model parameters = 1 intercept + 1 condition effect = 2.
-# qf() = function to compute quantiles of the F-distribution
-# Therefore, qf(0.99, p, m - p) -> qf(0.99, p = 2, (m = 2) - (p = 2)) -> qf(0.99, 2, 0). 
-# This cannot be computed, so NAs are producted
-
-
-
-
-
-
-
-
-# ==============================================================================
-# PART 2: ALL-vs-ALL PAIRWISE GROUP ANALYSIS (TWO TAIL)
-# SEE PART 1 FOR FULL DETAILS ON THE RATIONALE OF THE DESEQ2 STRATEGY.
-# ==============================================================================
-
-cat("PART 2: Starting All-vs-All Group pairwise analysis...\n")
-all_pairwise_results_list <- list()
-group_vs_group_pairs <- combn(experimental_groups, 2, simplify = FALSE)
-
-for (pair in group_vs_group_pairs) {
-  group1 <- pair[1]
-  group2 <- pair[2]
-
-  cat("------------------------------------------------------------\n")
-  cat("Comparing:", group2, "vs.", group1, "\n")
-  cat("------------------------------------------------------------\n")
-
-  pairwise_matrix <- count_matrix_df[, c(group1, group2)]
-  pairwise_matrix <- pairwise_matrix[rowSums(pairwise_matrix) > 0, ] # Keep peaks where there is at least 1 count for a group. Since we are doing TF v all, this will be all rows.
-  col_data <- data.frame(condition = factor(c("group1", "group2")), row.names = c(group1, group2))
-
-  dds <- DESeqDataSetFromMatrix(countData = pairwise_matrix, colData = col_data, design = ~ condition)
-  dds <- estimateSizeFactors(dds)
-  dds_for_disp <- dds
-  design(dds_for_disp) <- formula(~ 1)
-  dds_for_disp <- estimateDispersions(dds_for_disp, fitType = "local")
-  dispersions(dds) <- dispersions(dds_for_disp)
-  dds <- nbinomWaldTest(dds)
-  res <- results(dds, contrast = c("condition", "group2", "group1"))
-
-  res_df <- as.data.frame(res) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    mutate(comparison = paste0(group2, "_vs_", group1))
-
-  group1_metadata <- metadata_to_join %>% filter(group_name == group1) %>% select(-group_name) %>% rename_with(~ paste0(., "_", group1), -consensus_peak_id)
-  group2_metadata <- metadata_to_join %>% filter(group_name == group2) %>% select(-group_name) %>% rename_with(~ paste0(., "_", group2), -consensus_peak_id)
-
-  norm_counts_to_add <- as.data.frame(normalized_counts) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    select(consensus_peak_id, all_of(c(group1, group2))) %>%
-    rename_with(~ paste0("norm_count_", .), -consensus_peak_id)
-
-  norm_counts_pkb_to_add <- as.data.frame(normalized_counts_per_kb) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    select(consensus_peak_id, all_of(c(group1, group2))) %>%
-    rename_with(~ paste0("norm_count_pkb_", .), -consensus_peak_id)
-
-  res_df_with_meta <- res_df %>%
-    left_join(group1_metadata, by = "consensus_peak_id") %>%
-    left_join(group2_metadata, by = "consensus_peak_id") %>%
-    left_join(norm_counts_to_add, by = "consensus_peak_id") %>%
-    left_join(norm_counts_pkb_to_add, by = "consensus_peak_id") %>%
-    arrange(desc(abs(log2FoldChange)))
-
-  all_pairwise_results_list[[paste0(group2, "_vs_", group1)]] <- res_df_with_meta
-
-  output_file_pair <- file.path(output_dir, paste0(group2, "_vs_", group1, "_pairwise_results.csv"))
-  fwrite(res_df_with_meta, file = output_file_pair, na = "NA")
-  cat("Pairwise results saved to:", output_file_pair, "\n")
-}
-
-
-
-
-
-
-
-# ==============================================================================
-# PART 3: GROUP vs. ALL OTHER GROUPS ANALYSIS (ONE TAIL)
-# SEE PART 1 FOR FULL DETAILS ON THE RATIONALE OF THE DESEQ2 STRATEGY.
-# ==============================================================================
-
-all_vs_all_others_results_list <- list()
-experimental_groups2 <- c(experimental_groups, control_group) # This is set so that the comparison is the group vs. all other groups including HyPBase.
-
-for (group1 in experimental_groups2) {
-  other_groups <- setdiff(experimental_groups2, group1)
-  comparison_name <- paste0(group1, "_vs_ALL_OTHERS")
-  cat("------------------------------------------------------------\n")
-  cat("Comparing:", comparison_name, "\n")
-  cat("------------------------------------------------------------\n")
-
-  group1_counts <- count_matrix_df[, group1]
-  other_groups_counts <- if (length(other_groups) > 1) rowSums(count_matrix_df[, other_groups]) else count_matrix_df[, other_groups] # sum the counts of the other groups
-
-  vs_all_matrix <- data.frame(group1_counts, other_groups_counts)
-  colnames(vs_all_matrix) <- c(group1, "ALL_OTHERS")
-  vs_all_matrix <- vs_all_matrix[rowSums(vs_all_matrix) > 0, ] # Keep peaks where there is at least 1 count for a group. Since we are doing TF v all, this will be all rows.
-  col_data <- data.frame(condition = factor(c("group1", "all_others")), row.names = c(group1, "ALL_OTHERS"))
-
-  dds <- DESeqDataSetFromMatrix(countData = vs_all_matrix, colData = col_data, design = ~ condition)
-  dds <- estimateSizeFactors(dds)
-  dds_for_disp <- dds
-  design(dds_for_disp) <- formula(~ 1)
-  dds_for_disp <- estimateDispersions(dds_for_disp, fitType = "local")
-  dispersions(dds) <- dispersions(dds_for_disp)
-  dds <- nbinomWaldTest(dds)
-  res <- results(dds, contrast = c("condition", "group1", "all_others"), altHypothesis = "greater")
-
-  res_df <- as.data.frame(res) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    mutate(comparison = comparison_name)
-
-  group1_metadata <- metadata_to_join %>% filter(group_name == group1) %>% select(-group_name) %>% rename_with(~ paste0(., "_", group1), -consensus_peak_id)
-
-  norm_counts_to_add <- as.data.frame(normalized_counts) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    select(consensus_peak_id, all_of(group1)) %>%
-    rename_with(~ paste0("norm_count_", .), -consensus_peak_id)
-
-  norm_counts_pkb_to_add <- as.data.frame(normalized_counts_per_kb) %>%
-    tibble::rownames_to_column("consensus_peak_id") %>%
-    select(consensus_peak_id, all_of(group1)) %>%
-    rename_with(~ paste0("norm_count_pkb_", .), -consensus_peak_id)
-
-  res_df_with_meta <- res_df %>%
-    left_join(group1_metadata, by = "consensus_peak_id") %>%
-    left_join(norm_counts_to_add, by = "consensus_peak_id") %>%
-    left_join(norm_counts_pkb_to_add, by = "consensus_peak_id") %>%
-    arrange(desc(log2FoldChange))
-
-  all_vs_all_others_results_list[[comparison_name]] <- res_df_with_meta
-
-  output_file_vs_all <- file.path(output_dir, paste0(comparison_name, "_results.csv"))
-  fwrite(res_df_with_meta, file = output_file_vs_all, na = "NA")
-  cat("Group vs ALL OTHERS results saved to:", output_file_vs_all, "\n")
-}
-
-
-
-
-
-
-
-# ==============================================================================
-# PART 4: SAVE COMBINED OUTPUTS
-# ==============================================================================
-combined_control_results <- bind_rows(all_control_results_list)
-fwrite(combined_control_results, file = file.path(output_dir, "COMBINED_all_Group_vs_Control_results.csv"), na = "NA")
-cat("Combined Group vs. Control results table saved.\n")
-
-combined_pairwise_results <- bind_rows(all_pairwise_results_list)
-fwrite(combined_pairwise_results, file = file.path(output_dir, "COMBINED_all_Group_vs_Group_results.csv"), na = "NA")
-cat("Combined All-vs-All Group results table saved.\n")
-
-combined_vs_all_others_results <- bind_rows(all_vs_all_others_results_list)
-fwrite(combined_vs_all_others_results, file = file.path(output_dir, "COMBINED_Group_vs_ALL_OTHERS_results.csv"), na = "NA")
-cat("Combined Group vs. ALL OTHERS results table saved.\n\n")
-
-
-
-
-
-
-
-# ==============================================================================
-# PART 5: LOAD EXISTING RESULTS FROM PRIOR STEPS
-# ==============================================================================
-
-combined_control_file <- file.path(output_dir, "COMBINED_all_Group_vs_Control_results.csv")
-combined_pairwise_file <- file.path(output_dir, "COMBINED_all_Group_vs_Group_results.csv")
-combined_vs_all_file <- file.path(output_dir, "COMBINED_Group_vs_ALL_OTHERS_results.csv")
-norm_counts_pkb_file <- file.path(output_dir, "normalized_srt_barcode_counts_per_kb_per_group_in_consensus_peaks.csv")
-norm_counts_file <- file.path(output_dir, "normalized_srt_barcode_counts_per_group_in_consensus_peaks.csv")
-
-if (file.exists(combined_control_file) && file.exists(combined_pairwise_file) && file.exists(combined_vs_all_file) && file.exists(norm_counts_pkb_file) && file.exists(norm_counts_file)) {
-  combined_control_results <- fread(combined_control_file)
-  combined_pairwise_results <- fread(combined_pairwise_file)
-  combined_vs_all_others_results <- fread(combined_vs_all_file)
-  normalized_counts_per_kb <- fread(norm_counts_pkb_file)
-  normalized_counts <- fread(norm_counts_file)
-  cat("Successfully loaded all combined result files.\n\n")
-} else {
-  stop("Result files not found. Run the analysis parts first.")
-}
-
-
-
-
-
-
-
-
-# ==============================================================================
-# PART 6: VISUALIZATIONS/PLOTS
-# ==============================================================================
-# The norm_count_pkb and log2 fold change cutoffs are used to filter to high-confidence sites where the peak is supported by a lot of insertions.
-# It's best to look at the DESeq2 results and understand the relation of the normalized counts and Log2FC to determine the best
-      # combination of log2FC and counts cutoffs to get high confidence sites.
-# Can also use total counts.
-
-# Define cutoffs. Log2FC cutoff 1 and norm count per kb cutoff 20 is usually optimal.
-norm_count_pkb_cutoff = 20
-log2FoldChange_cutoff = 1
-
-# Set color_scale  
-color_scale  <- colorRamp2(
-    breaks = seq(from = q_low_specific, to = q_high_specific, length.out = 100),
-    colors = colorRampPalette(rev(c("#D73027", "#FC8D59", "#FEE090", "#FFFFBF", "#E0F3F8", "#91BFDB", "#4575B4")))(100)
-  )
-
-
-# -- Prepare Data. This only needs to be ran once. --
-# vs Control Group
-top_control_hits_list <- combined_control_results %>%
-  filter(log2FoldChange >= log2FoldChange_cutoff) %>%
-  rowwise() %>%
-  mutate(group = str_remove(comparison, "_vs_.*")) %>%
-  filter(get(paste0("norm_count_pkb_", group)) >= norm_count_pkb_cutoff) %>%
-  ungroup() %>%
-  arrange(comparison, desc(log2FoldChange))
-
-unique_top_control_peaks <- unique(top_control_hits_list$consensus_peak_id)
-cat(length(unique_top_control_peaks), "unique top peaks from Group vs. Control collected for heatmap.\n")
-
-# Group v Group pairwise (see above for comment on norm_count_pkb cutoff)
-top_pairwise_hits_list <- combined_pairwise_results %>%
-  filter(abs(log2FoldChange) >= log2FoldChange_cutoff) %>%
-  rowwise() %>%
-  mutate(
-    group = str_remove(comparison, "_vs_.*"),
-    control = str_remove(comparison, ".*_vs_")
-  ) %>%
-  filter(
-    get(paste0("norm_count_pkb_", group)) >= norm_count_pkb_cutoff |
-    get(paste0("norm_count_pkb_", control)) >= norm_count_pkb_cutoff
-  ) %>%
-  ungroup() %>%
-  arrange(comparison, desc(abs(log2FoldChange)))
-
-unique_top_pairwise_peaks <- unique(top_pairwise_hits_list$consensus_peak_id)
-cat(length(unique_top_pairwise_peaks), "unique top peaks from All-vs-All Group collected for heatmap.\n")
-
-# Group vs all others (see above for comment on norm_count_pkb cutoff)
-top_group_v_all_hits_list <- combined_vs_all_others_results %>%
-  filter(log2FoldChange >= log2FoldChange_cutoff) %>%
-  rowwise() %>%
-  mutate(group = str_remove(comparison, "_vs_.*")) %>%
-  filter(!group %in% control_group) %>%
-  filter(get(paste0("norm_count_pkb_", group)) >= norm_count_pkb_cutoff) %>%
-  ungroup() %>%
-  arrange(comparison, desc(abs(log2FoldChange)))
-
-union_top_group_v_all_hits <- unique(top_group_v_all_hits_list$consensus_peak_id)
-cat(length(union_top_group_v_all_hits), "unique top peaks from Group vs. All collected for heatmap.\n")
-
-
-# Read in data to generate heatmaps of norm_counts_pkb.
-# Plotting the per kb normalization helps to control for large differences in peak size with a higher chance of harboring insertions.
-# The values are z scored across groups per peak, so it's not so important here.
-# If interested in relative absolute signals, norm_counts_pkb is the best choice.
-
-normalized_counts_per_kb <- as.data.frame(fread(norm_counts_pkb_file))
-rownames(normalized_counts_per_kb) <- normalized_counts_per_kb$consensus_peak_id
-normalized_counts_per_kb <- normalized_counts_per_kb[, -1]
-
-
-
-# Make heatmaps of log2 scaled normalized counts per kb among the peaks.
-# -- Heatmap 1: From Group vs. Control Results --
-if (length(unique_top_control_peaks) > 1) {
-  
-  # Generate log2 scaled matrix of normalized counts per kb
-  heatmap_matrix_control <- normalized_counts_per_kb[unique_top_control_peaks, ]
-  heatmap_matrix_log_scaled_control <- t(scale(t(log2(heatmap_matrix_control + 1))))
-  
-  # Define 5th and 95th quantile for color scale
-  q_low_control <- quantile(heatmap_matrix_log_scaled_control, 0.05, na.rm = TRUE)
-  q_high_control <- quantile(heatmap_matrix_log_scaled_control, 0.95, na.rm = TRUE)
-  
-  # Generate heatmap
-  ht_control <- Heatmap(
-    heatmap_matrix_log_scaled_control,
-    name = "Z-score",
-    col = color_scale,
-    row_km = 8, # Adjust Km to find what captures the patterns the best
-    cluster_columns = TRUE,
-    cluster_rows = FALSE,
-    show_row_names = FALSE,
-    row_title = NULL,
-    row_dend_reorder = T,
-    column_dend_reorder = T,
-    border ="black",
-    column_title = paste("Peaks Above", control_group,
-                         "\n(ins/kb>",norm_count_pkb_cutoff, "log2fc>",log2FoldChange_cutoff,")"),
-    column_title_gp = gpar(fontsize = 10, fontface = "bold"),
-
-    heatmap_legend_param = list(title = "Z-score",
-                                title_gp = gpar(fontsize = 8),
-                                labels_gp = gpar(fontsize = 8)),
-    row_names_gp = gpar(fontsize = 9),
-    column_names_gp = gpar(fontsize = 9)
-  )
-
-  # Save heatmap
-  heatmap_file_control <- file.path(output_dir, "heatmap_top_vs_Control_peaks.png")
-  png(heatmap_file_control, width = 3, height = 8, units = "in", res = 300)
-  draw(ht_control)
-  dev.off()
-  cat("Heatmap for Group vs. Control results saved to:", heatmap_file_control, "\n")
-} else {
-  cat("Not enough unique differential peaks found in Group vs Control comparisons to generate a heatmap.\n\n")
-}
-
-# -- Heatmap 2: From All-vs-All Group Pairwise Results --
-if (length(unique_top_pairwise_peaks) > 1) {
-  
-  # Generate log2 scaled matrix of normalized counts per kb
-  heatmap_matrix_pairwise <- normalized_counts_per_kb[unique_top_pairwise_peaks, experimental_groups]
-  heatmap_matrix_log_scaled_pairwise <- t(scale(t(log2(heatmap_matrix_pairwise + 1))))
-  
-  # Define 5th and 95th quantile for color scale
-  q_low_pairwise <- quantile(heatmap_matrix_log_scaled_pairwise, 0.05, na.rm = TRUE)
-  q_high_pairwise <- quantile(heatmap_matrix_log_scaled_pairwise, 0.95, na.rm = TRUE)
-
-  # Generate heatmap
-  ht_pairwise <- Heatmap(
-    heatmap_matrix_log_scaled_pairwise,
-    name = "Z-score",
-    col = color_scale,
-    row_km = 10, # Adjust Km to find what captures the patterns the best.
-    border ="black", # Border around the Km blocks of peaks
-    cluster_columns = TRUE,
-    show_row_names = FALSE,
-    cluster_rows = F, # Row Km clustering only
-    row_title = NULL,
-    row_dend_reorder = T,
-    column_dend_reorder = T,
-    column_title = paste("Pairwise Group vs Group Peaks",
-                         "\n(ins/kb>",norm_count_pkb_cutoff, "log2fc>",log2FoldChange_cutoff,")"),
-    column_title_gp = gpar(fontsize = 10, fontface = "bold"),
-    heatmap_legend_param = list(title = "Z-score",
-                                title_gp = gpar(fontsize = 8),
-                                labels_gp = gpar(fontsize = 8)),
-    row_names_gp = gpar(fontsize = 9),
-    column_names_gp = gpar(fontsize = 9)
-  )
-  
-  # Save heatmap
-  heatmap_file_pairwise <- file.path(output_dir, "heatmap_top_Group_vs_Group_peaks.png")
-  png(heatmap_file_pairwise, width = 3, height = 8, units = "in", res = 300)
-  draw(ht_pairwise)
-  dev.off()
-  cat("Heatmap for All-vs-All Group results saved to:", heatmap_file_pairwise, "\n\n")
-} else {
-  cat("Not enough unique differential peaks found in pairwise comparisons to generate a heatmap.\n\n")
-}
-
-# -- Heatmap 3: From Group vs All Others Results --
-if (length(union_top_group_v_all_hits) > 1) {
-  
-  # Generate log2 scaled matrix of normalized counts per kb
-  heatmap_matrix_specific <- normalized_counts_per_kb[union_top_group_v_all_hits, experimental_groups]
-  heatmap_matrix_log_scaled_specific <- t(scale(t(log2(heatmap_matrix_specific + 1))))
-  
-  # Define 5th and 95th quantile for color scale
-  q_low_specific <- quantile(heatmap_matrix_log_scaled_specific, 0.05, na.rm = TRUE)
-  q_high_specific <- quantile(heatmap_matrix_log_scaled_specific, 0.95, na.rm = TRUE)
-  
-  # Generate heatmap
-  ht_specific <- Heatmap(
-    heatmap_matrix_log_scaled_specific,
-    name = "Z-score",
-    col = color_scale,
-    row_km = 9, # Adjust Km to find what captures the patterns the best.
-    border ="black", # Border around the Km blocks of peaks
-    cluster_columns = TRUE,
-    show_row_names = FALSE,
-    row_dend_reorder = T,
-    column_dend_reorder = T,
-    cluster_rows = F,
-    row_title = NULL,
-    column_title = paste("Group-Specific Peaks",
-                         "\n(ins/kb>",norm_count_pkb_cutoff, "log2fc>",log2FoldChange_cutoff,")"),
-    column_title_gp = gpar(fontsize = 10, fontface = "bold"),
-    heatmap_legend_param = list(title = "Z-score",
-                                title_gp = gpar(fontsize = 8),
-                                labels_gp = gpar(fontsize = 8)),
-    row_names_gp = gpar(fontsize = 9),
-    column_names_gp = gpar(fontsize = 9)
-  )
-  
-  # Save heatmap
-  heatmap_file_specific <- file.path(output_dir, "heatmap_top_Group_specific_peaks.png")
-  png(heatmap_file_specific, width = 3, height = 8, units = "in", res = 300)
-  draw(ht_specific)
-  dev.off()
-  cat("Heatmap for Group-specific results saved to:", heatmap_file_specific, "\n\n")
-} else {
-  cat("Not enough unique differential peaks found in group-specific comparisons to generate a heatmap.\n\n")
-}
-
-# ==============================================================================
-# PART 7: SUMMARY PLOTS
-# ==============================================================================
-# ==== Define the order of groups for plots and their colors ====
-group_order <- c(
-  "HyPBase",
-  "JUN",
-  "BATF",
-  "FOSL1",
-  "JUN.FOS.BATF",
-  "MAFF.ATF3.BATF2",
-  "BATF3.JDP2.BATF2",
-  "BATF3.BATF2.MAFF",
-  "FOSL1.BATF.MAFA"
+cat("--- Normalization complete. Files saved in:", normalized_peaks_dir, "---\n\n")
+
+# ---- 1c. Load and Combine All Normalized Matrices ----
+norm_matrix_files <- list.files(
+  normalized_peaks_dir,
+  pattern = "_normalized_peak_matrix.csv$",
+  full.names = TRUE
 )
 
-# Create a palette matching the number of groups, named by group_order
-palette_colors <- colorRampPalette(brewer.pal(8, "Dark2"))(length(group_order))
-names(palette_colors) <- group_order
+# Read all files into a list and combine
+all_norm_matrices_list <- lapply(norm_matrix_files, fread)
+combined_norm_matrix   <- rbindlist(all_norm_matrices_list)
 
-# ==== Bar Plot of Total Unique Insertions ====
-bar_data_insertions <- full_data %>%
-  group_by(group_name) %>%
-  distinct(consensus_peak_id, .keep_all = T) %>%
-  summarise(unique_insertions = sum(group_total_insertions_in_consensus_peak, na.rm = TRUE)) %>%
-  ungroup() %>%
-  # ensure only groups in our defined order are plotted
-  filter(group_name %in% group_order) %>%
-  mutate(group_name = factor(group_name, levels = group_order))
+# Get names of normalized count columns
+norm_count_cols <- grep("_normalized_count$", colnames(combined_norm_matrix), value = TRUE)
 
-p_insertions <- ggplot(bar_data_insertions,
-                       aes(x = group_name, y = unique_insertions, fill = group_name)) +
-  geom_col(color = "black", linewidth = 0.1, width = 0.75) +
-  geom_text(aes(label = unique_insertions),
-            vjust = -0.4, size = 2, color = "black") +
-  scale_fill_manual(values = palette_colors, guide = FALSE) +
-  labs(x = 'Group', y = 'Total Unique Insertions') +
-  theme_minimal(base_size = 8) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 8),
-    axis.text.y = element_text(color = "black", size = 8),
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.y = element_blank(),
-    panel.grid.major.y = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    axis.line = element_line(color = "black", linewidth = 0.2)
+# Create a final, tidy, long-format table of all normalized counts
+final_norm_matrix_long <- combined_norm_matrix %>%
+  select(peak_id, source_group = group_name, all_of(norm_count_cols)) %>%
+  pivot_longer(
+    cols = -c(peak_id, source_group),
+    names_to = "group",
+    values_to = "normalized_count"
+  ) %>%
+  mutate(group = sub("_normalized_count$", "", group))
+
+# Save the combined long-format matrix
+output_file <- file.path(normalized_peaks_dir, "combined_long_format_normalized_peak_matrix.csv")
+fwrite(final_norm_matrix_long, output_file)
+
+# ==============================================================================
+# PART 2: WRAPPER FUNCTION FOR DESEQ2 ANALYSIS
+# ==============================================================================
+
+run_all_comparisons_for_group <- function(current_group, all_groups, control_group, per_group_peaks_dir, output_dir, manual_size_factors) {
+  
+  # Create a dedicated subdirectory for the current group's results
+  group_output_dir <- file.path(output_dir, "DESeq2_results_by_group", current_group)
+  dir.create(group_output_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  matrix_file <- file.path(per_group_peaks_dir, paste0(current_group, "_peak_matrix.tsv"))
+  if (!file.exists(matrix_file)) {
+    warning(paste("Matrix file not found for", current_group, "- skipping."))
+    return(NULL)
+  }
+  
+  group_peak_matrix <- fread(matrix_file)
+  
+  disp_dir <- file.path(output_dir, "dispersion_plots")
+  dir.create(disp_dir, showWarnings = FALSE, recursive = TRUE)
+  
+  # --- Pairwise: group vs. every other group ---
+  for (other_group in setdiff(all_groups, current_group)) {
+    comparison_name <- paste0(current_group, "_vs_", other_group)
+    
+    group_col_name      <- paste0(current_group, "_insertion_count")
+    comparator_col_name <- paste0(other_group, "_insertion_count")
+    
+    count_matrix <- group_peak_matrix %>%
+      select(all_of(c(group_col_name, comparator_col_name))) %>%
+      as.data.frame()
+    rownames(count_matrix) <- group_peak_matrix$peak_id
+    colnames(count_matrix) <- c(current_group, other_group)
+    
+    keep_rows       <- (rowSums(count_matrix[, current_group, drop = FALSE], na.rm = TRUE) > 0) |
+                       (rowSums(count_matrix[, other_group, drop = FALSE], na.rm = TRUE) > 0)
+    pairwise_matrix <- count_matrix[keep_rows, , drop = FALSE]
+    
+    if (nrow(pairwise_matrix) == 0) next
+    
+    col_data <- data.frame(
+      condition = factor(c("treatment", "control")),
+      row.names = c(current_group, other_group)
+    )
+    
+    dds <- DESeqDataSetFromMatrix(
+      countData = pairwise_matrix,
+      colData = col_data,
+      design = ~condition
+    )
+    
+    # Apply pre-calculated manual size factors for 1-vs-1 comparisons
+    sizeFactors(dds) <- manual_size_factors[c(current_group, other_group)]
+    
+    # Estimate dispersions
+    dds_for_disp           <- dds
+    design(dds_for_disp)   <- formula(~1)
+    dds_for_disp           <- estimateDispersions(dds_for_disp, fitType = "local")
+    dispersions(dds)       <- dispersions(dds_for_disp)
+    
+    dds <- nbinomWaldTest(dds)
+    
+    res <- results(dds, contrast = c("condition", "treatment", "control"), altHypothesis = "greater")
+    
+    res_df <- as.data.frame(res) %>%
+      rownames_to_column("peak_id") %>%
+      mutate(comparison = comparison_name)
+    
+    # Get normalized counts for this specific comparison
+    norm_counts_df <- as.data.frame(counts(dds, normalized = TRUE)) %>%
+      rownames_to_column("peak_id")
+    
+    # Rename normalized count columns for clarity
+    old_grp_col <- current_group
+    old_cmp_col <- other_group
+    colnames(norm_counts_df)[colnames(norm_counts_df) == old_grp_col] <- "norm_group_counts"
+    colnames(norm_counts_df)[colnames(norm_counts_df) == old_cmp_col] <- "norm_comparator_counts"
+    
+    # Prepare metadata to join
+    metadata_to_join <- group_peak_matrix %>%
+      select(peak_id, peak_width, all_of(c(group_col_name, comparator_col_name)))
+    
+    # Join all data for a comprehensive results table
+    joined <- res_df %>%
+      left_join(metadata_to_join, by = "peak_id") %>%
+      left_join(norm_counts_df,   by = "peak_id")
+    
+    # Rename raw-count columns for clarity
+    old_grp_col <- group_col_name
+    old_cmp_col <- comparator_col_name
+    colnames(joined)[colnames(joined) == old_grp_col] <- "group_counts"
+    colnames(joined)[colnames(joined) == old_cmp_col] <- "comparator_counts"
+    
+    # Write results to file
+    fwrite(joined, file.path(group_output_dir, paste0(comparison_name, "_DESeq2_results.csv")))
+    
+    # Save dispersion plot for comparisons against the main control
+    if (other_group == control_group) {
+      png(
+        file.path(disp_dir, paste0(comparison_name, "_dispersion_plot.png")),
+        width = 6, height = 6, units = "in", res = 300
+      )
+      plotDispEsts(dds_for_disp, main = comparison_name)
+      dev.off()
+    }
+  }
+  
+  return(TRUE)
+}
+
+# ==============================================================================
+# PART 3: EXECUTE PARALLEL ANALYSIS
+# ==============================================================================
+cat("Starting differential analyses in parallel (PSOCK cluster)...\n")
+num_cores <- max(1, parallel::detectCores() - 1)
+
+# 1. Create a socket cluster
+cl <- parallel::makeCluster(num_cores)
+
+# 2. Export global variables and load libraries on each worker
+parallel::clusterExport(cl, varlist = c(
+  "run_all_comparisons_for_group",
+  "all_groups", "control_group",
+  "per_group_peaks_dir", "output_dir", "manual_size_factors",
+  "total_counts"
+))
+parallel::clusterEvalQ(cl, {
+  suppressPackageStartupMessages({
+    library(data.table)
+    library(dplyr)
+    library(DESeq2)
+    library(tidyverse)
+  })
+})
+
+# 3. Run the analysis in parallel
+parallel::parLapply(
+  cl,
+  experimental_groups,
+  run_all_comparisons_for_group,
+  all_groups = all_groups,
+  control_group = control_group,
+  per_group_peaks_dir = per_group_peaks_dir,
+  output_dir = output_dir,
+  manual_size_factors = manual_size_factors
+)
+
+# 4. Shut down the cluster
+parallel::stopCluster(cl)
+
+# ==============================================================================
+# PART 4: COMBINE AND SAVE ALL DESEQ2 RESULTS
+# ==============================================================================
+
+# Find all result files
+all_files <- list.files(
+  path = deseq_output_dir,
+  pattern = "_DESeq2_results.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+# Read all files into a single data frame
+all_results <- map_dfr(all_files, fread)
+
+# Separate the results into 'vs. Control' and 'vs. Group'
+combined_control_results <- all_results %>%
+  filter(grepl(paste0("_vs_", control_group, "$"), comparison))
+
+combined_pairwise_results <- all_results %>%
+  filter(!grepl(paste0("_vs_", control_group, "$"), comparison))
+
+# Add a 'group' column for easier filtering
+combined_control_results <- combined_control_results %>%
+  mutate(group = str_remove(comparison, "_vs_.*"))
+combined_pairwise_results <- combined_pairwise_results %>%
+  mutate(group = str_remove(comparison, "_vs_.*"))
+
+# Print summary and save combined files
+cat("Combined", nrow(combined_control_results), "Group vs. Control results.\n")
+cat("Combined", nrow(combined_pairwise_results), "Group vs. Group results.\n")
+cat("Combined", nrow(all_results), "total results.\n")
+
+fwrite(combined_control_results, file = file.path(output_dir, "COMBINED_all_Group_vs_Control_results.csv"))
+fwrite(combined_pairwise_results, file = file.path(output_dir, "COMBINED_all_Group_vs_Group_results.csv"))
+fwrite(all_results, file = file.path(output_dir, "COMBINED_all_Group_vs_Group_and_Group_v_Control_results.csv"))
+
+# ==============================================================================
+# PART 5: ANALYSIS OF PEAKS SIGNIFICANTLY HIGHER THAN CONTROL
+# ==============================================================================
+
+# ---- 5a. Identify and Save Significant Peaks (vs. Control) ----
+norm_count_cutoff     <- 10
+log2FoldChange_cutoff <- 1
+
+group_output_dir <- file.path(output_dir, "DESeq2_results_peaks_above_control_by_group")
+dir.create(group_output_dir, recursive = TRUE, showWarnings = FALSE)
+
+all_sig <- bind_rows(lapply(experimental_groups, function(group_name) {
+  df <- combined_control_results %>%
+    filter(
+      group == group_name,
+      log2FoldChange >= log2FoldChange_cutoff,
+      norm_group_counts >= norm_count_cutoff
+    )
+  
+  # Save filtered hits for this group
+  df_save <- df %>%
+    separate(peak_id, into = c("chr", "start", "end"), sep = ":|-", convert = TRUE)
+  
+  group_output_file <- file.path(
+    output_dir,
+    "DESeq2_results_peaks_above_control_by_group",
+    paste0(
+      group_name, "_vs_control_DESeq2_log2fc_cutoff_",
+      log2FoldChange_cutoff, "_norm_count_cutoff_",
+      norm_count_cutoff, ".csv"
+    )
   )
-p_insertions
-ggsave(file.path(output_dir, 'unique_insertions_per_group_barplot.png'),
-       p_insertions, width = 5, height = 5, dpi = 300, bg = "white")
-cat("Total insertions bar plot saved.\n")
+  
+  fwrite(df_save, group_output_file)
+  
+  return(df)
+}))
+cat("Found", nrow(all_sig), "significant hits (vs control) to merge.\n")
 
-# ==== Bar Plot of Total Significant Peaks (No Bins) ====
-bar_data_simple <- top_control_hits_list %>%
-  count(group, name = "num_peaks") %>%
-  mutate(group = factor(group, levels = group_order))
+# ---- 5b. Merge Significant Peaks into Consensus Regions ----
+gr_orig <- all_sig %>%
+  separate(peak_id, into = c("chr", "start", "end"), sep = ":|-", convert = TRUE) %>%
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
 
-p_simple <- ggplot(bar_data_simple,
-                   aes(x = group, y = num_peaks, fill = group)) +
+merged_gr <- reduce(gr_orig, with.revmap = TRUE)
+merged_gr$merged_peak_id <- paste0("merged_peak_", seq_along(merged_gr))
+cat("Merged into", length(merged_gr), "regions.\n")
+
+# ---- 5c. Aggregate Normalized Counts for Merged Peaks ----
+# 1. Map each merged peak back to its original constituent peaks
+map_merged_to_original <- data.frame(
+  merged_peak_id = rep(merged_gr$merged_peak_id, lengths(mcols(merged_gr)$revmap)),
+  orig_idx       = unlist(mcols(merged_gr)$revmap)
+) %>%
+  left_join(
+    all_sig %>%
+      mutate(orig_idx = row_number()) %>%
+      select(orig_idx, peak_id, source_group = group),
+    by = "orig_idx"
+  )
+
+# 2. Join map with comprehensive normalized counts and aggregate
+norm_matrix <- map_merged_to_original %>%
+  left_join(final_norm_matrix_long, by = c("peak_id", "source_group")) %>%
+  group_by(merged_peak_id, group) %>%
+  summarise(total_norm = sum(normalized_count, na.rm = TRUE), .groups = 'drop') %>%
+  pivot_wider(names_from = group, values_from = total_norm, values_fill = 0)
+
+# 3. Assemble and save the final merged matrix
+final_output_df_control <- as.data.frame(merged_gr)[, c("merged_peak_id", "seqnames", "start", "end")] %>%
+  dplyr::rename(chrom = seqnames) %>%
+  left_join(norm_matrix, by = "merged_peak_id") %>%
+  replace(is.na(.), 0)
+
+fwrite(
+  final_output_df_control,
+  file.path(output_dir, "merged_significant_peaks_vs_HyPBase_matrix.csv")
+)
+cat(
+  "Saved final matrix for peaks above control:",
+  file.path(output_dir, "merged_significant_peaks_vs_HyPBase_matrix.csv"),
+  "\n\n"
+)
+
+# ===================================================================================
+# PART 6: FIND GROUP-SPECIFIC PEAKS
+# ===================================================================================
+
+# ---- 6a. Find Peaks More Abundant in One Group vs. ALL Others ----
+specific_peak_list <- lapply(experimental_groups, function(current_group) {
+  other_groups <- setdiff(all_groups, current_group)
+  
+  # Get a list of significant peak vectors, one for each comparison
+  list_of_peak_id_vectors <- lapply(other_groups, function(other_group) {
+    comp_name_1 <- paste(current_group, other_group, sep = "_vs_")
+    all_results %>%
+      filter(
+        comparison == comp_name_1,
+        log2FoldChange >= log2FoldChange_cutoff,
+        norm_group_counts >= norm_count_cutoff
+      ) %>%
+      pull(peak_id)
+  })
+  
+  # Find the intersection of all peak sets
+  specific_peaks <- Reduce(intersect, list_of_peak_id_vectors)
+  
+  return(data.frame(peak_id = specific_peaks, specific_for_group = current_group))
+})
+
+all_specific_peaks <- bind_rows(specific_peak_list)
+cat("\nFound a total of", nrow(all_specific_peaks), "group-specific peaks across all groups.\n")
+
+# ---- 6b. Assemble Final Table for Group-Specific Peaks ----
+# 1. Join specific peaks with the long-format normalized count table
+specific_peaks_with_counts <- all_specific_peaks %>%
+  left_join(
+    final_norm_matrix_long,
+    by = c("peak_id", "specific_for_group" = "source_group")
+  )
+
+# (Debugging lines removed)
+
+# 2. Pivot data to create a wide matrix
+final_summary_df <- specific_peaks_with_counts %>%
+  pivot_wider(
+    id_cols = c(peak_id, specific_for_group),
+    names_from = group,
+    values_from = normalized_count,
+    values_fill = 0
+  )
+
+# 3. Add coordinates and reorder columns
+final_output_df_specific <- final_summary_df %>%
+  separate(peak_id, into = c("chrom", "start", "end"), sep = "[:-]", remove = FALSE, convert = TRUE) %>%
+  select(chrom, start, end, peak_id, specific_for_group, everything())
+
+# 4. Save the final summary matrix
+fwrite(
+  final_output_df_specific,
+  file.path(output_dir, "group_specific_peaks_summary.csv")
+)
+cat(
+  "Saved final matrix for group-specific peaks:",
+  file.path(output_dir, "group_specific_peaks_summary.csv"),
+  "\n\n"
+)
+
+# ---- 6c. Save Individual Group-Specific Peak Files ----
+group_output_dir <- file.path(output_dir, "DESeq2_results_peaks_group_specific")
+dir.create(group_output_dir, recursive = TRUE, showWarnings = FALSE)
+
+unique_groups <- unique(final_output_df_specific$specific_for_group)
+
+for (group in unique_groups) {
+  group_df <- final_output_df_specific %>%
+    filter(specific_for_group == group) %>%
+    select(chrom, start, end, everything()) # Ensures chrom/start/end are first
+  
+  group_output_file <- file.path(
+    output_dir,
+    "DESeq2_results_peaks_group_specific",
+    paste0(
+      group, "_DESeq2_log2fc_cutoff_",
+      log2FoldChange_cutoff, "_norm_count_cutoff_",
+      norm_count_cutoff, ".csv"
+    )
+  )
+  fwrite(group_df, group_output_file)
+}
+
+# ==============================================================================
+# PART 7: GENERATE HEATMAPS OF PEAK SETS
+# ==============================================================================
+
+# ---- 7a. Heatmap for Group-Specific Peaks ----
+# Prepare matrix
+heatmap_matrix_spec <- final_output_df_specific %>%
+  tibble::column_to_rownames("peak_id") %>%
+  select(-any_of(c("chrom", "start", "end", "specific_for_group")))
+
+# Log2 transform and Z-score scale the data
+log_matrix_spec    <- log2(heatmap_matrix_spec + 1)
+scaled_matrix_spec <- t(scale(t(log_matrix_spec)))
+scaled_matrix_spec[is.na(scaled_matrix_spec)] <- 0
+
+# Define row splits from the 'specific_for_group' column
+peak_info <- final_output_df_specific %>%
+  select(peak_id, specific_for_group) %>%
+  tibble::column_to_rownames("peak_id")
+peak_info <- peak_info[rownames(scaled_matrix_spec), , drop = FALSE]
+
+row_splits_by_group <- peak_info$specific_for_group
+
+# Calculate mean Z-score per TF within each specific-peak-set
+group_means <- aggregate(
+  scaled_matrix_spec,
+  by = list(group = row_splits_by_group),
+  FUN = mean
+)
+
+# Determine optimal column and row-split order for diagonal pattern
+dominant_col_indices <- apply(group_means[, -1], 1, which.max)
+group_order          <- order(dominant_col_indices)
+final_group_order    <- group_means$group[group_order]
+
+final_column_order <- unique(colnames(group_means[, -1])[dominant_col_indices[group_order]])
+final_column_order <- c(rev(final_column_order), "HyPBase")
+
+# Determine final row order within each split by Z-score
+final_row_order <- unlist(lapply(final_group_order, function(group_name) {
+  rows_in_group <- rownames(peak_info)[peak_info$specific_for_group == group_name]
+  ordered_rows  <- rows_in_group[order(scaled_matrix_spec[rows_in_group, group_name], decreasing = FALSE)]
+  return(ordered_rows)
+}))
+
+# Define color scale
+q_low_spec  <- quantile(scaled_matrix_spec, 0.05, na.rm = TRUE)
+q_high_spec <- quantile(scaled_matrix_spec, 0.95, na.rm = TRUE)
+
+color_scale <- colorRamp2(
+  breaks = seq(q_low_spec, q_high_spec, length.out = 100),
+  colors = colorRampPalette(rev(c("#D73027", "#FC8D59", "#FEE090", "#FFFFBF", "#E0F3F8", "#91BFDB", "#4575B4")))(100)
+)
+
+# Generate Heatmap Object
+ht_spec <- Heatmap(
+  scaled_matrix_spec,
+  name            = "Z-score",
+  col             = color_scale,
+  row_split       = factor(row_splits_by_group, levels = final_group_order),
+  column_order    = final_column_order,
+  row_order       = final_row_order,
+  cluster_rows    = FALSE,
+  cluster_columns = FALSE,
+  show_row_names  = FALSE,
+  column_title    = "TF-Specific Peaks",
+  row_title       = NULL,
+  column_names_gp = gpar(fontsize = 8, fontface = "bold"),
+  column_title_gp = gpar(fontsize = 10, fontface = "bold"),
+  border          = "black",
+  heatmap_legend_param = list(
+    title     = "Z score\n(norm. counts)",
+    title_gp  = gpar(fontsize = 8, fontface = "bold"),
+    labels_gp = gpar(fontsize = 8)
+  )
+)
+
+# Save as PNG
+png(file.path(output_dir, "heatmap_group_specific_peaks.png"), width = 3, height = 7, units = "in", res = 300)
+draw(ht_spec)
+dev.off()
+
+# Save as PDF
+pdf(file.path(output_dir, "heatmap_group_specific_peaks.pdf"), width = 3, height = 7)
+draw(ht_spec)
+dev.off()
+
+# ---- 7b. Heatmap for 'Group vs. Control' Merged Peaks ----
+# Prepare matrix
+heatmap_matrix_control <- final_output_df_control %>%
+  tibble::column_to_rownames("merged_peak_id") %>%
+  select(-c(chrom, start, end))
+
+# Log2 transform and Z-score scale data
+log_matrix_control    <- log2(heatmap_matrix_control + 1)
+scaled_matrix_control <- t(scale(t(log_matrix_control)))
+scaled_matrix_control[is.na(scaled_matrix_control)] <- 0
+
+# Perform k-means clustering for rows
+set.seed(123)
+kmeans_result <- kmeans(scaled_matrix_control, centers = 12, nstart = 25, iter.max = 100)
+row_clusters  <- kmeans_result$cluster
+
+# Define color scale
+q_low_control  <- quantile(scaled_matrix_control, 0.05, na.rm = TRUE)
+q_high_control <- quantile(scaled_matrix_control, 0.95, na.rm = TRUE)
+color_scale    <- colorRamp2(
+  breaks = seq(q_low_control, q_high_control, length.out = 100),
+  colors = colorRampPalette(rev(c("#D73027", "#FC8D59", "#FEE090", "#FFFFBF", "#E0F3F8", "#91BFDB", "#4575B4")))(100)
+)
+
+# Cluster columns, but keep HyPBase at the end
+cols_to_cluster     <- setdiff(colnames(scaled_matrix_control), "HyPBase")
+col_dendrogram      <- hclust(dist(t(scaled_matrix_control[, cols_to_cluster])))
+clustered_col_order <- colnames(scaled_matrix_control[, cols_to_cluster])[col_dendrogram$order]
+final_column_order  <- c(clustered_col_order, "HyPBase")
+
+# Generate Heatmap Object
+ht_control <- Heatmap(
+  scaled_matrix_control,
+  name                 = "Z-score",
+  col                  = color_scale,
+  show_row_names       = FALSE,
+  row_split            = row_clusters,
+  cluster_columns      = FALSE,
+  column_order         = final_column_order,
+  cluster_rows         = FALSE,
+  column_title         = "Peaks above HyPBase",
+  row_title            = NULL,
+  column_names_gp      = gpar(fontsize = 8, fontface = "bold"),
+  column_title_gp      = gpar(fontsize = 10, fontface = "bold"),
+  border               = "black",
+  heatmap_legend_param = list(
+    title     = "Z score\n(norm. counts)",
+    title_gp  = gpar(fontsize = 8, fontface = "bold"),
+    labels_gp = gpar(fontsize = 8)
+  )
+)
+
+# Save as PNG
+png(file.path(output_dir, "heatmap_merged_peaks_vs_Control.png"), width = 3, height = 7, units = "in", res = 300)
+draw(ht_control)
+dev.off()
+
+# Save as PDF
+pdf(file.path(output_dir, "heatmap_merged_peaks_vs_Control.pdf"), width = 3, height = 7)
+draw(ht_control)
+dev.off()
+
+# ==============================================================================
+# PART 8: SUMMARY PLOTS
+# ==============================================================================
+
+# ---- 8a. Define Group Order & Palette ----
+group_order_plots <- c() # Define order
+palette_colors <- c() # Define color palette
+names(palette_colors) <- group_order_plots
+
+  # This will be used in part 10c too.
+
+# ---- 8b. Bar Plot of Total Raw Insertions ----
+bar_data_insertions <- data.frame(
+  group_name = names(total_counts),
+  total_insertions = total_counts
+) %>%
+  filter(group_name %in% group_order_plots) %>%
+  mutate(group_name = factor(group_name, levels = group_order_plots))
+
+p_insertions <- ggplot(bar_data_insertions, aes(x = group_name, y = total_insertions, fill = group_name)) +
   geom_col(color = "black", linewidth = 0.1, width = 0.75) +
-  geom_text(aes(label = num_peaks),
-            vjust = -0.3, size = 3, color = "black") +
-  scale_fill_manual(values = palette_colors, guide = FALSE) +
-  labs(x = "Group",
-       y = "Number of Significant Peaks\n(log2FC ≥ cutoff, Norm Ins/kb ≥ cutoff)") +
+  geom_text(aes(label = total_insertions), vjust = -0.4, size = 3, color = "black") +
+  scale_fill_manual(values = palette_colors, guide = "none") +
+  labs(x = NULL, y = "Total Raw Insertions") +
   theme_minimal(base_size = 10) +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
-    axis.text.y = element_text(color = "black"),
+    axis.title.x       = element_blank(),
+    axis.title.y       = element_text(color = "black", size = 10),
+    axis.text.x        = element_text(angle = 45, hjust = 1, color = "black", size = 10),
+    axis.text.y        = element_text(color = "black", size = 10),
     panel.grid.major.x = element_blank(),
-    panel.grid.minor = element_blank(),
-    axis.line = element_line(color = "black", linewidth = 0.2)
+    panel.grid.minor   = element_blank(),
+    axis.line          = element_line(color = "black", linewidth = 0.2)
   )
-p_simple
-ggsave(file.path(output_dir, "peaks_per_group_barplot_simple.png"),
-       p_simple, width = 5, height = 5, dpi = 300, bg = "white")
-cat("Simple bar plot saved to:\n", file.path(output_dir, "peaks_per_group_barplot_simple.png"), "\n")
 
+ggsave(
+  file.path(output_dir, 'total_raw_insertions_per_group_barplot.png'),
+  p_insertions, width = 5, height = 4.5, dpi = 300, bg = "white"
+)
+ggsave(
+  file.path(output_dir, 'total_raw_insertions_per_group_barplot.pdf'),
+  p_insertions, width = 5, height = 4.5, bg = "white"
+)
 
-# ==== Bar Plot with Log2FC Bins ====
-bar_data_binned <- top_control_hits_list %>%
+# ---- 8c. Bar Plot of Total Significant Peaks (vs Control) ----
+bar_data_simple <- all_sig %>%
+  dplyr::count(group, name = "num_peaks") %>%
+  mutate(group = factor(group, levels = group_order_plots))
+
+p_simple <- ggplot(bar_data_simple, aes(x = group, y = num_peaks, fill = group)) +
+  geom_col(color = "black", linewidth = 0.1, width = 0.75) +
+  geom_text(aes(label = num_peaks), vjust = -0.3, size = 3, color = "black") +
+  scale_fill_manual(values = palette_colors, guide = "none") +
+  labs(x = NULL, y = "Number of Peaks\nabove HyPBase") +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.title.x       = element_blank(),
+    axis.title.y       = element_text(color = "black", size = 10),
+    axis.text.x        = element_text(angle = 45, hjust = 1, color = "black", size = 10),
+    axis.text.y        = element_text(color = "black", size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+    axis.line          = element_line(color = "black", linewidth = 0.2)
+  )
+
+ggsave(
+  file.path(output_dir, "significant_peaks_per_group_barplot.png"),
+  p_simple, width = 5, height = 4.5, dpi = 300, bg = "white"
+)
+ggsave(
+  file.path(output_dir, "significant_peaks_per_group_barplot.pdf"),
+  p_simple, width = 5, height = 4.5, bg = "white"
+)
+
+# ---- 8d. Bar Plot with Log2FC Bins ----
+bar_data_binned <- all_sig %>%
   mutate(
     log2fc_bin = case_when(
       log2FoldChange >= 1 & log2FoldChange < 2 ~ "1-2",
@@ -738,285 +745,335 @@ bar_data_binned <- top_control_hits_list %>%
       log2FoldChange >= 3 & log2FoldChange < 4 ~ "3-4",
       log2FoldChange >= 4 & log2FoldChange < 5 ~ "4-5",
       log2FoldChange >= 5 & log2FoldChange < 6 ~ "5-6",
-      log2FoldChange >= 6 ~ "6+",
-      TRUE ~ NA_character_
+      log2FoldChange >= 6                    ~ "6+",
+      TRUE                                   ~ NA_character_
     )
   ) %>%
   filter(!is.na(log2fc_bin)) %>%
-  count(group, log2fc_bin, name = "num_peaks") %>%
-  mutate(group = factor(group, levels = group_order))
+  dplyr::count(group, log2fc_bin, name = "num_peaks") %>%
+  mutate(group = factor(group, levels = group_order_plots))
 
-bar_data_binned$log2fc_bin <- factor(bar_data_binned$log2fc_bin, levels = rev(c("1-2", "2-3", "3-4", "4-5", "5-6", "6+")))
+bar_data_binned$log2fc_bin <- factor(
+  bar_data_binned$log2fc_bin,
+  levels = rev(c("1-2", "2-3", "3-4", "4-5", "5-6", "6+"))
+)
 
-bin_colors <- c("1-2" = "#8dd3c7", "2-3" = "#ffffb3", "3-4" = "#bebada", "4-5" = "#fb8072", "5-6" = "#80b1d3", "6+" = "#fdb462")
+# Define bin labels and colors
+bin_labels <- c("1-2", "2-3", "3-4", "4-5", "5-6", "6+")
+bin_colors <- viridis(6)
+names(bin_colors) <- bin_labels
 
 p_binned <- ggplot(bar_data_binned, aes(x = group, y = num_peaks, fill = log2fc_bin)) +
   geom_col(color = "black", linewidth = 0.1, width = 0.75) +
-  geom_text(aes(label = num_peaks), position = position_stack(vjust = 0.5), size = 2.5, fontface = "plain", color = "black") +
-  scale_fill_manual(values = bin_colors, name = "log2FC Bin", drop = FALSE) +
-  labs(x = 'Group', y = 'Number of Significant Peaks\n(Binned log2FC, Norm Ins/kb > 20)') +
+  scale_fill_manual(values = bin_colors, name = "log2FC bin", drop = FALSE) +
+  labs(x = NULL, y = "Number of Peaks\nabove HyPBase") +
   theme_minimal(base_size = 10) +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, face = "plain", color = "black", size = 10),
-    axis.text.y = element_text(color = "black", size = 10), panel.grid.major.x = element_blank(),
-    panel.grid.minor.y = element_blank(), panel.grid.major.y = element_blank(), panel.grid.minor.x = element_blank(),
-    axis.line = element_line(color = "black", linewidth = 0.2)
+    axis.title.x     = element_blank(),
+    axis.title.y     = element_text(color = "black", size = 10),
+    axis.text.x      = element_text(angle = 45, hjust = 1, color = "black", size = 10),
+    axis.text.y      = element_text(color = "black", size = 10),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line        = element_line(color = "black", linewidth = 0.2)
   )
-bar_data_binned
-bar_file_binned <- file.path(output_dir, 'peaks_per_group_barplot_log2fc_bins.png')
-ggsave(bar_file_binned, p_binned, width = 7, height = 5, dpi = 300, bg = "white")
-cat("Binned bar plot saved.\n")
 
-
-
-# ==========================================================================================================
-# Define Significant Peaks (used in both PART 8 and PART 9)
-
-# IMPORTANT - Make sure HOMER is installed and HOMER's bin directory is in your PATH environment variable.
-# ==========================================================================================================
-# This object has every peak that is significantly above background for at least one group.
-significant_peak_events <- combined_control_results %>%
-  as_tibble() %>%
-  filter(log2FoldChange >= log2FoldChange_cutoff) %>%
-  pivot_longer(starts_with("norm_count_pkb_"), names_to = "norm_col", values_to = "norm_val") %>%
-  mutate(
-    group_name = sub("^norm_count_pkb_", "", norm_col),
-    group_from_comparison = sub(paste0("_vs_", control_group, "$"), "", comparison)
-  ) %>%
-  filter(group_name == group_from_comparison, !is.na(norm_val), norm_val >= norm_count_pkb_cutoff) %>%
-  select(consensus_peak_id, group_name) %>%
-  distinct()
-
-cat("Identified", nrow(significant_peak_events), "total binding events above background across all groups.\n")
-
-# This object is the union of all significant peaks, for annotation and for the motif background.
-all_significant_peaks_df <- significant_peak_events %>%
-  distinct(consensus_peak_id) %>%
-  separate(consensus_peak_id, into = c("chr", "start", "end"), sep = "[:-]", remove = FALSE) %>%
-  mutate(name = consensus_peak_id, score = 0, strand = ".") %>%
-  select(chr, start, end, name, score, strand)
-
-# This object will be used to join binding site info to the annotation table from HOMER
-significant_hits <- significant_peak_events %>%
-  mutate(is_bind_site = TRUE) %>%
-  pivot_wider(names_from = group_name, values_from = is_bind_site, names_glue = "{group_name}_bind_site")
-
-
-
-
+ggsave(
+  file.path(output_dir, 'peaks_per_group_barplot_log2fc_bins.png'),
+  p_binned, width = 5, height = 4.5, dpi = 300, bg = "white"
+)
+ggsave(
+  file.path(output_dir, 'peaks_per_group_barplot_log2fc_bins.pdf'),
+  p_binned, width = 5, height = 4.5, bg = "white"
+)
 
 # ==============================================================================
-# PART 8: PEAK ANNOTATION WITH HOMER
+# PART 9: PER-GROUP PEAK ANNOTATION & MOTIF ANALYSIS WITH HOMER
 # ==============================================================================
 
-output_dir_homer <- file.path(output_dir, "HOMER")
+# ---- 9a. Per-Group Peak Annotation ----
+output_dir_homer      <- file.path(output_dir, "HOMER")
+bed_output_dir        <- file.path(output_dir_homer, "Per_Group_BEDs")
+annotation_output_dir <- file.path(output_dir_homer, "Per_Group_Annotations")
 dir.create(output_dir_homer, showWarnings = FALSE, recursive = TRUE)
-annotation_output_dir <- file.path(output_dir_homer, "PeakAnnotation")
+dir.create(bed_output_dir, showWarnings = FALSE, recursive = TRUE)
 dir.create(annotation_output_dir, showWarnings = FALSE, recursive = TRUE)
 
-# --- 8a. Export BED file of all significant peaks ---
-all_peaks_bed_path <- file.path(annotation_output_dir, "all_significant_peaks_for_annotation.bed")
-write.table(all_significant_peaks_df, all_peaks_bed_path, sep = "\t", quote = F, row.names = F, col.names = F)
-cat("Exported", nrow(all_significant_peaks_df), "peaks for annotation to:", all_peaks_bed_path, "\n")
+# Loop through each group to generate BED files and print HOMER commands
+# Copy and paste HOMER commands into terminal.
+# Make sure HOMER is installed and the HOMER bin directory is in your PATH.
+for (current_group in experimental_groups) {
+  # 1. Filter for significant peaks
+  group_sig_peaks <- all_sig %>%
+    filter(group == current_group)
+  
+  if (nrow(group_sig_peaks) == 0) {
+    cat(paste0("No significant peaks for ", current_group, ", skipping.\n"))
+    next
+  }
+  
+  # 2. Create a BED-formatted data frame
+  group_bed_df <- group_sig_peaks %>%
+    distinct(peak_id) %>%
+    separate(peak_id, into = c("chr", "start", "end"), sep = "[:-]", remove = FALSE) %>%
+    mutate(name = peak_id, score = 0, strand = ".") %>%
+    select(chr, start, end, name, score, strand)
+  
+  # 3. Define paths
+  group_bed_path        <- file.path(bed_output_dir, paste0(current_group, "_significant_peaks.bed"))
+  group_annotation_file <- file.path(annotation_output_dir, paste0(current_group, "_annotated.txt"))
+  
+  # 4. Write BED file
+  write.table(group_bed_df, group_bed_path, sep = "\t", quote = F, row.names = F, col.names = F)
+  
+  # 5. Generate and print the HOMER command for annotation
+  cmd_annotate <- paste(
+    "annotatePeaks.pl", shQuote(group_bed_path), "hg38",
+    ">", shQuote(group_annotation_file)
+  )
+  cat(cmd_annotate, "\n\n")
+}
 
-# --- 8b. Generate annotatePeaks.pl Command ---
-annotation_output_file <- file.path(annotation_output_dir, "all_significant_peaks_annotated.txt")
-cmd_annotate <- paste(
-  "annotatePeaks.pl", shQuote(all_peaks_bed_path), "hg38",
-  ">", shQuote(annotation_output_file)
+# ---- 9b. Process HOMER Annotations and Plot Genomic Distribution ----
+# 1. Read and process each group's HOMER annotation file
+all_annotation_files <- list.files(
+  annotation_output_dir,
+  pattern = "_annotated.txt$",
+  full.names = TRUE
 )
-# Run this in the the termanl
-cat(cmd_annotate) 
+processed_annotations_per_group <- list()
 
-
-
-# --- 8c. Process and Plot HOMER Annotation Results ---
-homer_annotation_file <- annotation_output_file # Use dynamic path
-
-    homer_annots <- fread(homer_annotation_file)
-    names(homer_annots)[1] <- "PeakID"
-    colnames(homer_annots) <- tolower(gsub(" ", "_", colnames(homer_annots)))
-    homer_annots <- homer_annots %>%
-        rename(consensus_peak_id = peakid) %>%
-        select(-any_of(c("strand", "peak_score", "focus_ratio/region_size", "nearest_unigene")))
-
-    # Join with binding site info
-    homer_annots <- homer_annots %>%
-        left_join(significant_hits, by = "consensus_peak_id") %>%
-        mutate(across(contains("_bind_site"), ~ if_else(is.na(.), FALSE, .)))
-
-    # Simplify annotations
-    homer_annots <- homer_annots %>%
-        mutate(annot_type_simple = case_when(
-            distance_to_tss <= 1000 & distance_to_tss >= -5000 ~ "-5kb to +1kb of TSS",
-            grepl("3' UTR", annotation) ~ "3' UTR",
-            grepl("5' UTR", annotation) ~ "5' UTR",
-            grepl("exon", annotation) ~ "Exon",
-            grepl("intron", annotation) ~ "Intron",
-            grepl("Intergenic", annotation) ~ "Intergenic/non-coding",
-            grepl("non-coding", annotation) ~ "Intergenic/non-coding",
-            grepl("TTS", annotation) ~ "TTS",
-            TRUE ~ "Other"
-        ))
-    
-   
-    # --- Plot Genomic Distribution ---
-    plot_data_homer_dist <- homer_annots %>%
-      select(consensus_peak_id, annot_type_simple, ends_with("_bind_site")) %>%
-      pivot_longer(cols = ends_with("_bind_site"), names_to = "group", values_to = "is_bound") %>%
-      filter(is_bound) %>%
-      mutate(group = str_remove(group, "_bind_site")) %>%
-      distinct(consensus_peak_id, group, .keep_all = TRUE) %>%
-      count(group, annot_type_simple, name = "count") %>%
-      group_by(group) %>%
-      mutate(proportion = count / sum(count)) %>%
-      ungroup()
-
-    # Set order for plot
-    label_order <- c("-5kb to +1kb of TSS", "5' UTR", "Exon", "Intron", "3' UTR", "TTS", "Intergenic/non-coding")
-    plot_data_homer_dist$annot_type_simple <- factor(plot_data_homer_dist$annot_type_simple, levels = rev(label_order))
-    plot_data_homer_dist$group <- factor(plot_data_homer_dist$group, levels = rev(intersect(experimental_groups, unique(plot_data_homer_dist$group))))
-
-    # Set colors
-    plot_colors <- RColorBrewer::brewer.pal(n = length(unique(plot_data_homer_dist$annot_type_simple)), name = "Accent")
-    
-    # Make plot
-    genomic_distribution_plot <- ggplot(plot_data_homer_dist, aes(x = proportion, y = group, fill = annot_type_simple)) +
-      geom_bar(stat = "identity", position = "stack", color = "black", width = 0.7) +
-      scale_fill_manual(values = plot_colors, name = "Genomic Region", drop = FALSE) +
-      labs(x = "Proportion of Peaks", y = NULL, title = "Genomic Distribution of Significant Peaks") +
-      theme_minimal(base_size = 10) +
-      theme(
-        plot.title = element_text(hjust = 0.5, face = "bold"),
-        axis.text = element_text(color = "black"),
-        panel.grid = element_blank(),
-        axis.line.x = element_line(color = "black")
-      ) +
-      guides(fill = guide_legend(reverse = TRUE))
-    genomic_distribution_plot
-    ggsave(file.path(output_dir, "HOMER_genomic_annotation_proportions_plot.png"), genomic_distribution_plot, width = 8, height = 5, dpi = 300, bg = "white")
-    cat("HOMER genomic distribution plot saved.\n")
-
-    # --- Save Promoter-Bound Gene Lists from HOMER ---
-    if ("gene_name" %in% names(homer_annots)) {
-      promoter_bound_genes_homer <- homer_annots %>%
-        filter(annot_type_simple == "-5kb to +1kb of TSS", !is.na(gene_name), trimws(gene_name) != "") %>%
-        select(gene_name, ends_with("_bind_site")) %>%
-        pivot_longer(cols = ends_with("_bind_site"), names_to = "group", values_to = "is_bound") %>%
-        filter(is_bound) %>%
-        mutate(group = str_remove(group, "_bind_site")) %>%
-        distinct(group, gene_name) %>%
-        group_by(group) %>%
-        summarise(genes = list(sort(unique(gene_name))), .groups = "drop") %>%
-        { setNames(.$genes, .$group) }
-
-      if (length(promoter_bound_genes_homer) > 0) {
-        max_len <- max(lengths(promoter_bound_genes_homer))
-        promoter_genes_df_homer <- as.data.frame(lapply(promoter_bound_genes_homer, `length<-`, max_len))
-        output_file_promoter_genes_homer <- file.path(output_dir, "HOMER_promoter_bound_genes_by_Group.csv")
-        fwrite(promoter_genes_df_homer, output_file_promoter_genes_homer, row.names = FALSE, na = "")
-        cat("HOMER promoter-bound gene lists saved to:", output_file_promoter_genes_homer, "\n")
-      }
-    }
-
-    
-    # Save the home annotation file
-    write.csv(homer_annots,file.path(output_dir,
-                                     paste0("HOMER_Annotations_Peak_Set_norm_count_pkb_",norm_count_pkb_cutoff,
-                                            "_Log2FC_",log2FoldChange_cutoff,".csv")
-                                     )
+for (file in all_annotation_files) {
+  group_name <- sub("_annotated.txt$", "", basename(file))
+  annots     <- fread(file) %>%
+    mutate(group = group_name)
+  
+  # Standardize column names and select
+  colnames(annots) <- tolower(gsub(" ", "_", colnames(annots)))
+  annots <- annots %>%
+    select(-any_of(c("strand", "peak_score", "focus_ratio/region_size", "nearest_unigene")))
+  
+  # Simplify annotation categories
+  annots <- annots %>%
+    mutate(
+      annot_type_simple = case_when(
+        distance_to_tss <= 1000 & distance_to_tss >= -5000 ~ "-5kb to +1kb of TSS",
+        grepl("3' UTR", annotation)                         ~ "3' UTR",
+        grepl("5' UTR", annotation)                         ~ "5' UTR",
+        grepl("exon", annotation)                           ~ "Exon",
+        grepl("intron", annotation)                         ~ "Intron",
+        grepl("Intergenic", annotation)                     ~ "Intergenic/non-coding",
+        grepl("non-coding", annotation)                     ~ "Intergenic/non-coding",
+        grepl("TTS", annotation)                            ~ "TTS",
+        TRUE                                                ~ "Other"
+      )
     )
+  
+  # Clean up peak_id column name
+  colnames(annots)[1] <- "peak_id"
+  
+  processed_annotations_per_group[[group_name]] <- annots
+}
 
+# 2. Combine processed annotations and compute proportions for plotting
+plot_data_list <- list()
+for (group_name in names(processed_annotations_per_group)) {
+  annots <- processed_annotations_per_group[[group_name]]
+  df     <- annots %>%
+    dplyr::count(group, annot_type_simple, name = "count") %>%
+    group_by(group) %>%
+    mutate(proportion = count / sum(count)) %>%
+    ungroup()
+  
+  plot_data_list[[group_name]] <- df
+}
+plot_data_homer_dist <- bind_rows(plot_data_list)
 
+# 3. Factor ordering for consistent plotting
+label_order <- c(
+  "-5kb to +1kb of TSS", "5' UTR", "Exon",
+  "Intron", "3' UTR", "TTS", "Intergenic/non-coding"
+)
+plot_data_homer_dist <- plot_data_homer_dist %>%
+  mutate(
+    annot_type_simple = factor(annot_type_simple, levels = rev(label_order)),
+    group             = factor(group, levels = rev(intersect(experimental_groups, unique(group))))
+  )
 
+# 4. Generate palette and create plot
+plot_colors <- RColorBrewer::brewer.pal(
+  n    = length(levels(plot_data_homer_dist$annot_type_simple)),
+  name = "Accent"
+)
+
+genomic_distribution_plot <- ggplot(
+  plot_data_homer_dist,
+  aes(x = group, y = proportion, fill = annot_type_simple)
+) +
+  geom_col(color = "black", linewidth = 0.2, width = 0.75) +
+  scale_fill_manual(
+    values = plot_colors,
+    name   = "Genomic Region",
+    drop   = FALSE,
+    guide  = guide_legend(reverse = TRUE)
+  ) +
+  coord_flip() +
+  labs(x = NULL, y = "Proportion of Peaks") +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.title.x     = element_blank(),
+    axis.title.y     = element_text(color = "black", size = 10),
+    axis.text.x      = element_text(color = "black", size = 10),
+    axis.text.y      = element_text(color = "black", size = 10),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    axis.line        = element_line(color = "black", size = 0.5),
+    plot.title       = element_text(hjust = 0.5, face = "bold")
+  )
+
+# 5. Save the plot
+ggsave(
+  file.path(output_dir, "HOMER_genomic_annotation_proportions_plot_accent.png"),
+  genomic_distribution_plot, width = 6.5, height = 4, dpi = 300, bg = "white"
+)
+ggsave(
+  file.path(output_dir, "HOMER_genomic_annotation_proportions_plot_accent.pdf"),
+  genomic_distribution_plot, width = 6.5, height = 4, bg = "white"
+)
+
+# ---- 9c. Save Promoter-Bound Gene Lists from HOMER ----
+promoter_bound_genes_homer <- lapply(processed_annotations_per_group, function(annots) {
+  annots %>%
+    filter(
+      annot_type_simple == "-5kb to +1kb of TSS",
+      !is.na(gene_name),
+      trimws(gene_name) != "",
+      gene_type %in% "protein-coding"
+    ) %>%
+    pull(gene_name) %>%
+    unique() %>%
+    sort()
+})
+
+# Drop groups with zero genes and pad to a rectangle for CSV export
+promoter_bound_genes_homer <- promoter_bound_genes_homer[lengths(promoter_bound_genes_homer) > 0]
+
+if (length(promoter_bound_genes_homer) > 0) {
+  max_len <- max(lengths(promoter_bound_genes_homer))
+  promoter_genes_df_homer <- as.data.frame(
+    lapply(promoter_bound_genes_homer, `length<-`, max_len),
+    stringsAsFactors = FALSE
+  )
+  output_file_promoter_genes_homer <- file.path(
+    output_dir,
+    "HOMER_promoter_bound_genes_protein_coding_genes_by_Group.csv"
+  )
+  fwrite(
+    promoter_genes_df_homer,
+    output_file_promoter_genes_homer,
+    row.names = FALSE,
+    na = ""
+  )
+  cat(
+    "HOMER promoter-bound gene lists saved to:",
+    output_file_promoter_genes_homer, "\n"
+  )
+}
+
+# ---- 9d. Join Annotations Back to DESeq2 Results ----
+# Combine all processed annotation files into one dataframe
+combined_annotations <- bind_rows(processed_annotations_per_group)
+
+# (Confirmation checks removed for neatness)
+
+# Join annotations to the significant 'vs. Control' results
+all_sig_annots <- left_join(all_sig, combined_annotations, by = c("peak_id", "group")) %>%
+  select(-group_counts, -comparator_counts)
+
+# Save the final annotated results table
+fwrite(
+  all_sig_annots,
+  file = file.path(output_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
+)
 
 # ==============================================================================
-# PART 9: MOTIF ANALYSIS WITH HOMER. This takes a long time to run (1+ hrs)
+# PART 10: MOTIF ANALYSIS WITH HOMER
 # ==============================================================================
-motif_analysis_dir <- file.path(output_dir_homer, "MotifAnalysis")
+
+# ---- 10a. Create Directory and Export BED Files for Motif Discovery ----
+motif_analysis_dir <- file.path(output_dir_homer, "HOMER_motif_discovery")
 dir.create(motif_analysis_dir, showWarnings = FALSE, recursive = TRUE)
 
+groups_to_export <- unique(all_sig_annots$group)
 
-# Loop through each group to export its specific peaks and generate commands
-groups_to_export <- unique(significant_peak_events$group_name)
 for (current_group in groups_to_export) {
-  # --- Filter to the peaks of that group ---
-  group_peaks_df <- significant_peak_events %>%
-    filter(group_name == current_group) %>%
-    distinct(consensus_peak_id) %>%
-    separate(consensus_peak_id, into = c("chr", "start", "end"), sep = "[:-]", remove = FALSE) %>%
-    mutate(name = consensus_peak_id, score = 0, strand = ".") %>%
-    select(chr, start, end, name, score, strand)
-
-  # --- Save those peaks as a .bed in the motif_analysis_dir --- #
+  group_peaks_df <- all_sig_annots %>%
+    filter(group == current_group) %>%
+    distinct(peak_id, .keep_all = TRUE) %>%
+    transmute(chr, start, end, name = peak_id, score = 0, strand = ".")
+  
   bed_path <- file.path(motif_analysis_dir, paste0(current_group, "_significant_peaks.bed"))
-  write.table(group_peaks_df, bed_path, sep = "\t", quote = F, row.names = F, col.names = F)
-  cat("Exported", nrow(group_peaks_df), "peaks for Group '", current_group, "' for motif analysis.\n")
+  write.table(group_peaks_df, bed_path, sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+  cat("Exported", nrow(group_peaks_df), "peaks for Group '", current_group, "' to:", bed_path, "\n")
 }
 
-# --- Run the run_homer_motifs_script.sh script ---
-# General usage is:       bash run_homer_motifs.sh <BED_DIR> <GENOME> <NUM WORKERS>
-# - Recommended to use one worker per TF if possible.
-# Each worker takes one BED file and runs the entire findMotifsGenome.pl command on it from start to finish.
+# --- 10b. Run the run_homer_motifs_script.sh script ---
+# General usage is:       bash run_homer_motifs.sh <BED_DIR> <GENOME>
 
-# Specific usage:         bash <path_where_script_is>/run_homer_motifs.sh <motif_analysis_dir> hg38 <one worker per tf>
+# Specific usage:         bash <path to script>/run_homer_motifs.sh <motif_analysis_dir> hg38 <num_workers>
 
-# bash /Users/rileymullins/Documents/test_scripts_for_multiplex_cc_analysis/TESTING_06302025/testing_07032025/run_homer_motif_script.sh /Users/rileymullins/Documents/test_scripts_for_multiplex_cc_analysis/TESTING_06302025/testing_07032025/full_dataset/analysis_files/HOMER/MotifAnalysis hg38
+# Example: bash run_homer_motifs.sh /path/to/HOMER_motif_analysis hg38 12
 
 
-# --- 9c. Process and Plot HOMER Motif Results ---
+# ---- 10c. Process and Plot HOMER Motif Results ----
+# Read and process all 'knownResults.txt' files
 motif_result_files <- list.files(motif_analysis_dir, pattern = "knownResults.txt", recursive = TRUE, full.names = TRUE)
 
-if (length(motif_result_files) > 0) {
-  motif_results <- map_dfr(motif_result_files, function(file) {
-    group_name <- basename(dirname(dirname(file))) # Assumes structure is .../MotifAnalysis/<group_name>/MotifOutput/
-    df <- tryCatch(read_tsv(file, comment = "#", show_col_types = FALSE), error = function(e) NULL)
-    if (!is.null(df)) {
-      df$group_name <- group_name
-    }
-    df
-  })
+motif_results <- purrr::map_dfr(motif_result_files, function(file) {
+  readr::read_tsv(file, comment = "#", show_col_types = FALSE) %>%
+    select(!starts_with("...")) %>%
+    mutate(group_name = basename(dirname(file)) %>% str_remove("_motif_output$"))
+}) %>%
+  janitor::clean_names()
 
-  if (nrow(motif_results) > 0) {
-    motif_results_clean <- motif_results %>%
-      rename(Motif_Name = `Motif Name`, P_value = `P-value`, Log_P_value = `Log P-value`) %>%
-      mutate(neglogP = Log_P_value * -1) %>%
-      mutate(
-        Motif_Name_Clean = Motif_Name %>%
-          str_remove_all(regex("ChIP-Seq|\\(ChIP-Seq\\)", ignore_case = TRUE)) %>%
-          str_remove_all(regex("\\bHOMER\\b", ignore_case = TRUE)) %>%
-          str_replace_all("[-/]+", " ") %>%
-          str_squish()
-      )
+# Prepare top 10 motifs per group for plotting
+motif_plot_data <- motif_results %>%
+  mutate(
+    neglogP          = log_p_value * -1,
+    motif_name_clean = motif_name %>%
+      str_remove_all(regex("ChIP-Seq|\\(ChIP-Seq\\)", ignore_case = TRUE)) %>%
+      str_remove_all(regex("\\bHOMER\\b", ignore_case = TRUE)) %>%
+      str_replace_all("[-/]+", " ") %>%
+      str_squish()
+  ) %>%
+  mutate(group_name = factor(group_name, levels = group_order_plots)) %>%
+  group_by(group_name) %>%
+  arrange(-neglogP) %>%
+  slice_head(n = 10) %>%
+  ungroup() %>%
+  mutate(motif_name_clean = reorder(motif_name_clean, neglogP))
 
-    top_n <- 10 # Top n motifs to plot
-    motif_plot_data <- motif_results_clean %>%
-      group_by(group_name) %>%
-      arrange(-neglogP) %>%
-      slice_head(n = top_n) %>%
-      ungroup() %>%
-      mutate(Motif_Name_Clean = fct_reorder(Motif_Name_Clean, neglogP))
+# Build and save the faceted bar plot
+motif_plot <- ggplot(motif_plot_data, aes(x = neglogP, y = motif_name_clean, fill = group_name)) +
+  geom_col(show.legend = FALSE, width = 0.7, color = "black", linewidth = 0.25) +
+  facet_wrap(~ group_name, scales = "free_y", ncol = 2) +
+  scale_fill_manual(values = palette_colors) +
+  labs(x = expression(-log[10](P) ~ "enrichment"), y = NULL) +
+  theme_bw(base_size = 10) +
+  theme(
+    strip.text       = element_text(face = "bold", size = 10),
+    axis.text        = element_text(color = "black", size = 8),
+    plot.title       = element_text(hjust = 0.5, face = "bold", size = 12),
+    panel.spacing    = unit(1, "lines"),
+    panel.grid.minor = element_blank(),
+    panel.border     = element_rect(color = "black", fill = NA, linewidth = 0.3)
+  )
 
-    motif_plot <- ggplot(motif_plot_data, aes(x = neglogP, y = Motif_Name_Clean, fill = group_name)) +
-      geom_col(show.legend = FALSE, width = 0.7, color = "black", linewidth = 0.25) +
-      facet_wrap(~group_name, scales = "free_y", ncol = 2) +
-      labs(x = expression(-log[10](P) ~ "enrichment"), y = NULL, title = "Top Enriched Motifs per Group") +
-      theme_bw(base_size = 10) +
-      theme(
-        strip.text = element_text(face = "bold", size = 10, color = "black"),
-        axis.text.y = element_text(size = 8, color = "black"),
-        axis.text.x = element_text(size = 8, color = "black"),
-        plot.title = element_text(hjust = 0.5, face = "bold", size = 12, color = "black"),
-        panel.spacing = unit(1, "lines"),
-        panel.grid.minor = element_blank(),
-        panel.border = element_rect(color = "black", fill = NA, size = 0.3)
-      ) +
-      scale_fill_brewer(palette = "Set1")
-
-    motif_plot_file <- file.path(output_dir, "homer_top_motifs_plot.png")
-    ggsave(motif_plot_file, motif_plot, width = 8, height = 10, dpi = 300, bg = "white")
-    cat("HOMER motif plot saved to:", motif_plot_file, "\n")
-  }
-} else {
-  cat("No 'knownResults.txt' files found. Skipping motif plotting.\n")
-}
+ggsave(
+  file.path(output_dir, "homer_top_motifs_plot.png"),
+  motif_plot, width = 10, height = 10, dpi = 300, bg = "white"
+)
+ggsave(
+  file.path(output_dir, "homer_top_motifs_plot.pdf"),
+  motif_plot, width = 10, height = 10, bg = "white"
+)
