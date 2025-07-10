@@ -8,16 +8,16 @@
 
 # --- Paths ---
 # Path to the SPAN jar file
-SPAN_JAR="/Users/rileymullins/Documents/span-2.0.6652.jar"
+SPAN_JAR="<path>/span-2.0.6652.jar"
 
 # Directory containing your input .qbed files
-INPUT_DIR="/Users/rileymullins/Documents/test_scripts_for_multiplex_cc_analysis/TESTING_06302025/testing_07032025/full_dataset/full_dataset_insertion_maps/raw_unique_insertion_count_per_group_qbed"
+INPUT_DIR="<path>/raw_unique_insertion_count_per_group_qbed"
 
 # Directory where the output peak files will be saved
-OUTPUT_DIR="/Users/rileymullins/Documents/span_analysis_results"
+OUTPUT_DIR="<path>/STEP_2_output_run_span_peak_caller"
 
 # Path to your chromosome sizes file
-CHROM_SIZES="/Users/rileymullins/Documents/test_scripts_for_multiplex_cc_analysis/TESTING_06302025/testing_07032025/hg38.chrom.sizes"
+CHROM_SIZES=""<path>/hg38.chrom.sizes"
 
 
 # --- SPAN Parameters ---
