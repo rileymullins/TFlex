@@ -1,5 +1,5 @@
-# step_2_run_span_peak_caller.sh
 #!/bin/bash
+# step_2_run_span_peak_caller.sh
 
 # ==============================================================================
 # Default Configuration
