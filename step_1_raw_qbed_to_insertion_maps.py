@@ -44,7 +44,7 @@ import pyBigWig
 # SCRIPT CONFIGURATION
 # ==============================================================================
 
-VERSION = "1.0.0" # Updated version for fix
+VERSION = "1.0.0" 
 
 # Define the set of valid chromosome names to retain for downstream processing
 VALID_CHROMOSOMES = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY"]
