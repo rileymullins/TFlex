@@ -14,7 +14,6 @@ import os
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 from typing import Optional, List, Tuple
-
 import polars as pl
 import pandas as pd
 import pybedtools
@@ -209,7 +208,7 @@ def main():
 
     output_path = output_dir / "consensus_peaks_only.tsv"
     cons_df.write_csv(output_path, separator="\t")
-    logging.info(f"✅ Saved {cons_df.height} consensus peaks to: {output_path}")
+    logging.info(f"Saved {cons_df.height} consensus peaks to: {output_path}")
 
     # --- Generate Final Consensus Count Matrix ---
     logging.info("Generating final consensus count matrix...")
@@ -220,7 +219,6 @@ def main():
     consensus_tasks = [(g, bg, final_consensus_bt) for g, bg in all_bedgraphs]
     
     with ProcessPoolExecutor(max_workers=args.workers) as exe:
-        # FIX: Use the named helper function instead of a lambda
         future_results = exe.map(run_consensus_worker, consensus_tasks)
         for res in tqdm(future_results, total=len(consensus_tasks)):
             if res is not None:
@@ -229,7 +227,7 @@ def main():
 
     matrix_path = output_dir / "consensus_peak_counts.tsv"
     cons_df.write_csv(matrix_path, separator="\t")
-    logging.info(f"✅ Successfully generated consensus count matrix at: {matrix_path}")
+    logging.info(f"Successfully generated consensus count matrix at: {matrix_path}")
 
 
 if __name__ == '__main__':
