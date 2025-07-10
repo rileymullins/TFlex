@@ -24,9 +24,9 @@ suppressPackageStartupMessages({
 
 # ---- 0b. Define Input & Output Directories ----
 python_output_dir          <- <dir of steps 1-3 outputs>
+raw_insertion_bedgraph_dir <- file.path(python_output_dir, "<STEP 1 output dir>/raw_unique_insertion_count_per_group_bedgraph")
+per_group_peaks_dir        <- file.path(python_output_dir, ,"<STEP 3 output dir>/per_group_peak_matrices")
 output_dir                 <- file.path(python_output_dir, "STEP_4_output_deseq2_peak_analysis")
-per_group_peaks_dir        <- file.path(python_output_dir, ,"<step 3 output dir>/per_group_peak_matrices")
-raw_insertion_bedgraph_dir <- file.path(python_output_dir, "<step 1 output dir>/raw_unique_insertion_count_per_group_bedgraph")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
