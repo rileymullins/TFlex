@@ -1,4 +1,4 @@
-# step_3_run_span_peak_caller.sh
+# step_2_run_span_peak_caller.sh
 
 #!/bin/bash
 
