@@ -1,4 +1,4 @@
-# step_5_homer_motifs.sh
+# run_homer_motifs.sh
 
 #!/bin/bash
 
