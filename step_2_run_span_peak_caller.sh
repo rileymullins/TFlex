@@ -4,14 +4,8 @@
 # ==============================================================================
 # Default Configuration
 # ==============================================================================
-
-# --- Set These Paths in Command Line ---
-#SPAN_JAR="/path/to/your/span.jar"
-#INPUT_DIR="/path/to/your/qbeds"
-#OUTPUT_DIR="./STEP_2_output_run_span_peak_caller"
-#CHROM_SIZES="/path/to/your/hg38.chrom.sizes"
-
-# --- Default SPAN Parameters ---
+# 
+# --- SPAN Parameters for ---
 JAVA_MEM="-Xmx16G"
 BIN_SIZE=50
 FDR="0.01"
@@ -29,7 +23,7 @@ usage() {
     echo "  -i      Directory containing input .qbed files."
     echo "  -o      Directory for output peak files."
     echo "  -c      Path to the chromosome sizes file."
-    echo "  -b      Bin size for SPAN analysis.       (Default: $BIN_SIZE)"
+    echo "  -b      Bin size for SPAN analysis."
     echo "  -f      False Discovery Rate (FDR) cutoff. (Default: $FDR)"
     echo "  -h      Display this help message."
     exit 1
@@ -72,9 +66,9 @@ for QBED_FILE in "$INPUT_DIR"/*.qbed; do
     echo "Output will be saved to: $OUTPUT_PEAK_FILE"
     echo "----------------------------------------------------"
 
-    # Run the SPAN command sequentially (no '&' at the end)
+    # Run the SPAN command sequentially. Recommended bin size and FDR value are given.
     java $JAVA_MEM -jar "$SPAN_JAR" analyze \
-        -b $BIN_SIZE \
+        -b 50 \
         -kd \
         -f $FDR \
         --fragment 0 \
