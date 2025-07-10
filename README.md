@@ -1,6 +1,6 @@
 # Multiplexed TF Mapping with SRTs - A Bioinformatics Pipeline
 
-This repository contains a series of scripts to perform an end-to-end analysis for multiplexed transcription factor (TF) mapping using self-reporting transposons (SRTs). The pipeline processes raw sequencing data (in qbed/bed format), calls peaks, performs differential analysis, and annotates the results to identify TF-specific binding sites and enriched motifs.
+This repository contains a series of scripts to perform an end-to-end analysis for multiplexed transcription factor (TF) mapping using self-reporting transposons (SRTs). The pipeline processes sequencing data after initial alignment using the Calling Cards/Self Reporting Transpsons pipelinem, calls peaks, performs differential analysis, and annotates the results to identify TF-specific binding sites and enriched motifs.
 
 ## Table of Contents
 
