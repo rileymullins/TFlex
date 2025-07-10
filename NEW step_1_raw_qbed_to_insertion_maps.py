@@ -44,7 +44,7 @@ import pyBigWig
 # SCRIPT CONFIGURATION
 # ==============================================================================
 
-VERSION = "3.0.0" # Updated version for fix
+VERSION = "1.0.0" # Updated version for fix
 
 # Define the set of valid chromosome names to retain for downstream processing
 VALID_CHROMOSOMES = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY"]
@@ -239,7 +239,7 @@ def convert_bedgraphs_to_qbed(bedgraph_dir: Path, qbed_dir: Path):
         if df.empty: continue
         df_expanded = df.loc[df.index.repeat(df["count"])]
         df_expanded[["chrom", "start", "end"]].to_csv(qbed_path, sep="\t", index=False, header=False)
-    logging.info("✅ Finished qbed conversion.")
+    logging.info("Finished qbed conversion.")
 
 
 # ==============================================================================
