@@ -2,7 +2,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# Default Configuration - Can be overridden by command-line arguments
+# Default Configuration
 # ==============================================================================
 
 # --- Set These Paths in Command Line ---
