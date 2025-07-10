@@ -1,52 +1,66 @@
 # step_2_run_span_peak_caller.sh
-
 #!/bin/bash
 
 # ==============================================================================
-# Configuration - Adjust these variables
+# Default Configuration - Can be overridden by command-line arguments
 # ==============================================================================
 
-# --- Paths ---
-# Path to the SPAN jar file
-SPAN_JAR="<path>/span-2.0.6652.jar"
+# --- Set These Paths in Command Line ---
+#SPAN_JAR="/path/to/your/span.jar"
+#INPUT_DIR="/path/to/your/qbeds"
+#OUTPUT_DIR="./STEP_2_output_run_span_peak_caller"
+#CHROM_SIZES="/path/to/your/hg38.chrom.sizes"
 
-# Directory containing your input .qbed files
-INPUT_DIR="<path>/raw_unique_insertion_count_per_group_qbed"
-
-# Directory where the output peak files will be saved
-OUTPUT_DIR="<path>/STEP_2_output_run_span_peak_caller"
-
-# Path to your chromosome sizes file
-CHROM_SIZES=""<path>/hg38.chrom.sizes"
-
-
-# --- SPAN Parameters ---
-# Memory to allocate to Java
+# --- Default SPAN Parameters ---
 JAVA_MEM="-Xmx16G"
-
-# Bin size for the analysis
 BIN_SIZE=50
-
-# False Discovery Rate (FDR) cutoff
 FDR="0.01"
 
-# --- Concurrency Settings ---
-# Set the maximum number of parallel jobs
-MAX_JOBS=2
+# ==============================================================================
+# Command-Line Argument Parsing
+# ==============================================================================
 
+# Function to display script usage
+usage() {
+    echo "Usage: $0 [-j SPAN_JAR] [-i INPUT_DIR] [-o OUTPUT_DIR] [-c CHROM_SIZES] [-b BIN_SIZE] [-f FDR]"
+    echo " "
+    echo "Options:"
+    echo "  -j      Path to the SPAN jar file."
+    echo "  -i      Directory containing input .qbed files."
+    echo "  -o      Directory for output peak files."
+    echo "  -c      Path to the chromosome sizes file."
+    echo "  -b      Bin size for SPAN analysis.       (Default: $BIN_SIZE)"
+    echo "  -f      False Discovery Rate (FDR) cutoff. (Default: $FDR)"
+    echo "  -h      Display this help message."
+    exit 1
+}
+
+# Parse the options
+while getopts "j:i:o:c:b:f:h" opt; do
+    case ${opt} in
+        j ) SPAN_JAR="$OPTARG" ;;
+        i ) INPUT_DIR="$OPTARG" ;;
+        o ) OUTPUT_DIR="$OPTARG" ;;
+        c ) CHROM_SIZES="$OPTARG" ;;
+        b ) BIN_SIZE="$OPTARG" ;;
+        f ) FDR="$OPTARG" ;;
+        h ) usage ;;
+        \? ) usage ;;
+    esac
+done
 
 # ==============================================================================
-# Script Logic - No need to edit below this line
+# Script Logic
 # ==============================================================================
 
 # Create the output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
 
-# Initialize a counter for the jobs
-job_count=0
-
 # Find all .qbed files in the input directory and loop through them
 for QBED_FILE in "$INPUT_DIR"/*.qbed; do
+    # Check if files exist to avoid errors with empty directories
+    [ -e "$QBED_FILE" ] || continue
+
     # Get the base filename without the path and extension
     BASENAME=$(basename "$QBED_FILE" .qbed)
 
@@ -58,7 +72,7 @@ for QBED_FILE in "$INPUT_DIR"/*.qbed; do
     echo "Output will be saved to: $OUTPUT_PEAK_FILE"
     echo "----------------------------------------------------"
 
-    # Run the SPAN command in the background
+    # Run the SPAN command sequentially (no '&' at the end)
     java $JAVA_MEM -jar "$SPAN_JAR" analyze \
         -b $BIN_SIZE \
         -kd \
@@ -67,23 +81,8 @@ for QBED_FILE in "$INPUT_DIR"/*.qbed; do
         -t "$QBED_FILE" \
         --format BED \
         --cs "$CHROM_SIZES" \
-        -p "$OUTPUT_PEAK_FILE" &
-    
-    # Increment the job counter
-    ((job_count++))
-    
-    # If the max number of jobs is reached, wait for them to finish
-    if [ "$job_count" -ge "$MAX_JOBS" ]; then
-        echo ""
-        echo "Reached max jobs ($MAX_JOBS). Waiting for the current batch to finish..."
-        wait
-        job_count=0 # Reset the counter for the next batch
-    fi
-
+        -p "$OUTPUT_PEAK_FILE"
 done
 
-# Wait for any remaining background jobs to finish before exiting
 echo ""
-echo "All SPAN jobs have been started. Waiting for the final batch to complete..."
-wait
 echo "All jobs are finished. Results are in: $OUTPUT_DIR"
