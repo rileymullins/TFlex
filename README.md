@@ -221,8 +221,34 @@ python step_3_generate_peak_by_group_count_matrices.py \
 This is the final analysis script that performs differential analysis, annotation, and visualization.
 Make sure that HOMER is installed and its /bin directory is in the PATH.
 
-### **Workflow**
+### **Dependencies**
+This script was tested with the following R package versions and R version 4.4.1 (2024-06-14).  
+Other versions may work.
 
+| R Package         | Version  |
+|-------------------|----------|
+| data.table        | 1.17.4   |
+| purrr             | 1.0.2    |
+| stringr           | 1.5.1    |
+| tibble            | 3.2.1    |
+| DESeq2            | 1.46.0   |
+| tidyverse         | 2.0.0    |
+| parallel          | 4.4.1    |
+| ComplexHeatmap    | 2.22.0   |
+| RColorBrewer      | 1.1.3    |
+| circlize          | 0.4.16   |
+| GenomicRanges     | 1.58.0   |
+| viridis           | 0.6.5    |
+| janitor           | 2.2.0    |
+
+**R Version:**  
+R version 4.4.1 (2024-06-14) — *"Race for Your Life"*  
+Platform: `aarch64-apple-darwin20`
+
+**External Dependency:**  
+- **HOMER**: Must be installed and accessible via command line. Used for genomic annotation and motif discovery.
+
+## **Workflow**
 1. **Normalization:** Calculates size factors from total raw insertions from the raw insertion count bedgraph files of Step 1 and normalizes the count matrices from Step 3\.  
 2. **Differential Analysis:** Uses DESeq2 to perform pairwise comparisons for each group's peak set against a control group and all other experimental groups.  
 3. **Significant Peak Identification:** Filters results to identify peaks significantly enriched over the control (HyPBase) and peaks that are enriched for each group relative to all others.  
