@@ -26,7 +26,7 @@
 ## Table of Contents
 
 - [Overview of the Method](#overview-of-the-method)
-- [Script 1: `multiplex_srt_seq_first_pass_peaks.py`](#script-1-multiplex_srt_seq_first_pass_peakspy)
+- [Script 1: `step_1_raw_qbed_to_insertion_maps.py`](#script-1-multiplex_srt_seq_first_pass_peakspy)
     - [Pipeline steps](#pipeline-steps)
     - [Usage of multiplex_srt_seq_first_pass_peaks.py](#usage-of-multiplex_srt_seq_first_pass_peakspy)
     - [Output files of multiplex_srt_seq_first_pass_peaks.py](#output-files-of-multiplex_srt_seq_first_pass_peakspy)
@@ -62,7 +62,7 @@ The method is antibody-independent and semi-multiplexed. Because both the sample
 
 ---
 
-## Script 1: `multiplex_srt_seq_first_pass_peaks.py`
+## Script 1: `step_1_raw_qbed_to_insertion_maps.py`
 - This pipeline processes multiplexed self-reporting transposon data to identify transcription factor (TF) binding sites.
 - It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
 
