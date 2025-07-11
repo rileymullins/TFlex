@@ -1,429 +1,26 @@
-# Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization 
-
-## Order to run scripts
-1. ### step_1_raw_qbed_to_insertion_maps.py
-   - **Main goal:** assign each unique SRT barcode (i.e. insertion) to its fragment that is most proximal to the transposon. 
-      - **INPUT:** qbed file(s) of all fragments after initial alignment. 
-      - **OUTPUT:** fragment files of each sample and insertion coordinates as a qbed and raw and normalized insertions counts as bedgraph and bigwig files per sample and group.
-
-2. ### step_2_run_span_peak_caller.sh
-   - **Main goal:** call peaks without background for all groups using the SPAN2.0 peak caller (https://github.com/JetBrains-Research/span). 
-      - **INPUT:** the per-group insertion coordinates qbed file. 
-      - **OUTPUT:** peaks without background for each group, representing concentrated regions of insertions and putative peaks above background.
-     
-3. ### step_3_generate_peak_by_group_count_matrices.py
-   - **Main goal:** count the insertion counts of every other group, including the background control HyPBase, in each group's peak set for downstream peak calling above background and differential peak calling.
-      - **INPUT:** per-group insertion count bedgraph files from STEP 1 and per-group peak calls from STEP 2.
-      - **OUTPUT:** peak by group insertion count matrices for each group.
-      
-4. ### step_4_DESeq2_Differential_Peak_Analysis.R
-   - **Main goal:** Define each group's binding sites above control, which are the FINAL TF binding sites, and differential peaks among groups.
-      - **INPUT:** peak by group insertion count matrices for each group from STEP 3.
-      - **OUTPUT:** peaks above the background control HyPBase, pairwise group vs group differential peaks, and basic peak plots.
-
-<img width="4000" height="3670" alt="overview_of_analysis_method_07-11-2025" src="https://github.com/user-attachments/assets/38bfe237-9f1b-4b1a-b39c-f5b79d9da212" />
-
-## Table of Contents
-
-- [Overview of the Method](#overview-of-the-method)
-- [Script 1: `step_1_raw_qbed_to_insertion_maps.py`](#script-1-multiplex_srt_seq_first_pass_peakspy)
-    - [Pipeline steps](#pipeline-steps)
-    - [Usage of multiplex_srt_seq_first_pass_peaks.py](#usage-of-multiplex_srt_seq_first_pass_peakspy)
-    - [Output files of multiplex_srt_seq_first_pass_peaks.py](#output-files-of-multiplex_srt_seq_first_pass_peakspy)
-    - [Output column names with descriptions of multiplex_srt_seq_first_pass_peaks.py](#output-column-names-with-descriptions-of-multiplex_srt_seq_first_pass_peakspy)
-- [Script 2: `generate_insertion_maps.py`](#script-2-generate_insertion_mapspy)
-    - [Workflow](#workflow)
-    - [Usage of `generate_insertion_maps.py`](#usage-of-generate_insertion_mapspy)
-    - [Output Files of `generate_insertion_maps.py`](#output-files-of-generate_insertion_mapspy)
-- [Key details of data processing](#key-details-of-data-processing-applies-to-both-multiplex_srt_seq_first_pass_peakspy-and-generate_insertion_mapspy)
-    - [Read orientation in relation to the tranpsoson](#strand-start-end-and-read-orientation-in-relation-to-the-tranpsoson)
-    - [Logic for converting fragment-based peaks to SRT barcode-based peaks](#key-logic-for-converting-the-fragment-based-peaks-to-srt-barcode-based-peaks)
-    - [Logic for visualization](#key-logic-for-visualization)
-
----
-
-## Overview of the Method
-
-- This method leverages self-reporting transposon (SRT) technology.
-- An SRT is "self-reporting" because it contains a promoter that drives the transcription of RNA containing the junction of the transposon's terminal repeat and the downstream genomic DNA.
-- Sequencing this RNA maps the transposon insertion site, which represents the approximate TF binding site.
-
-The method is antibody-independent and semi-multiplexed. Because both the sample barcode and the SRT barcode are inserted into genomic DNA, cells from different conditions can be combined following transfection/electroporation if they have distinct sample barcodes.
-
-![Picture1](https://github.com/user-attachments/assets/46acac4e-7843-49a7-9e7e-2a5b616febc6)
-
-**Workflow Summary:**
-
-1.  **Transfection:** Samples are transfected with a large, diverse pool of plasmids. Each pool contains a unique sample barcode but many SRT barcodes.
-2.  **Pooling:** All samples, each with its unique sample barcode, are pooled after transfection.
-3.  **Library Prep & Sequencing:** The workflow is RNA extraction, cDNA synthesis, SRT amplification, library preparation, and 2x150bp sequencing.
-4.  **Demultiplexing:** Post-sequencing, reads are assigned to their original samples based on the sample barcode.
-5.  **Mapping:** The unique transposon insertion sites are identified by their genomic coordinates and the SRT barcode, representing the location and signal of a TF binding event, respectively.
-
----
-
-## Script 1: `step_1_raw_qbed_to_insertion_maps.py`
-- This pipeline processes multiplexed self-reporting transposon data to identify transcription factor (TF) binding sites.
-- It supports high-throughput experiments with many barcoded samples, corrects technical errors in barcode assignment, collapses redundant reads, calls peaks per sample, and generates a consensus set of reproducible peaks across all experimental conditions.
-
-![Picture1](https://github.com/user-attachments/assets/dd45c0cc-8132-4d65-af3a-1b24befb073c)
-
-### Pipeline steps
-#### Phase 1: Loading, Correcting, and Annotating All Reads
-1. **Input loading and barcode parsing:**
-   - Reads all qbed/bed files and parses the `name` field into `library_name`, `sample_barcode_raw`, and `srt_bc`.
-   - To avoid memory issues with a lot of data, each input file is looped through one at a time. For each file, barcode correction and annotation is performed. Then the data is partitioned by sample_name to temporary .parquet files in a partitioned_temp/ directory.
-   - After all input files have been processed, the intermediate files are grouped sample_name and concatenated to create the final collapsed_per_sample/{sample_name}.parquet files.
-   - Temporary directory with the intermediate files is removed after completion.
-2. **Barcode correction:**
-   - Corrects sample barcodes against the annotation whitelist, using Hamming distance up to the `--sample_barcode_dist_threshold`.
-3. **Annotation:**
-   - Joins corrected reads with the annotation file, assigning `sample_name` and `group_name`.
-4. **Per-sample partitioning:**
-   - Saves all rows of each `sample_name` as a `.parquet` file for efficient downstream processing.
-   - The .parquet of each sample's fragments/qbed partition is saved in the `<output_dir>/collapsed_per_sample directory` within the specified output directory.
-
-#### Phase 2: Calling Peaks on Each Sample's Data
-5. **Fragment-based peak calling:**
-   - For each sample, loads each partitioned `.parquet` file and merges rows identical in all fields except `sample_barcode_raw` and sums their reads.
-   - Then peaks are called with pycallingcards on these fragments, which may or may not be associated with more than one SRT barcode.
-   - The goal here is to define regions in the genome of at least on transpsoson insertion that is supported by at least 5 differentially fragmented molecules to remove noise.
-   - Per sample fragment-based peaks are saved in `<output_dir>/fragment_peaks` within the specified output directory.
-6. **Fragments-to-fragment-based peak mapping (intersection)**
-   - The deduplicated fragments of each sample are intersected to their own peak set to map the fragments to the peaks.
-   - This is required for step 7.
-7. **SRT barcode-based peak refinement:**
-   - The fragment-based peaks refines peak boundaries using strand-aware logic of the position per SRT barcode that is the most proximal to the junction of the transposon and genomic DNA.
-   - This step will also count the number of unique transposon insertions (equal to unique SRT barcodes) in the fragment-based peak. The unique transposon insertions acts as the signal of TF binding.
-   - Per sample SRT barcode-based peaks are saved in `<output_dir>/sample_peaks directory` within the specified output directory as a .parquet file.
-
-#### Phase 3: Generating Consensus Peaks and Final Output
-8. **Consensus peak generation:**
-   - Merges sample-specific peaks to produce SRT barcode consensus peaks across all samples and groups (i.e., everything specified in the annotation file).
-9. **Sample peak set-to-consensus peak mapping (intersection):**
-   - Intersects all sample peak sets with the SRT barcode consensus peaks to map which sample peaks were merged in the SRT barcodeconsensus peak.
-10. **Output aggregation:**
-    - Each row is a unique consensus peak and sample_name pair populated with the per-sample peak statistics (e.g., fragment-based peak coordinates, SRT barcode-based peak coordinates, total reads, total fragments, and unique insertions within each of those peaks). The attributes of all samples in the same group are summed per consensus peak to produces the per-group statistics (`final_results.tsv`).
-    - A `column_definitions.tsv` file describing all output columns is also saved in the output directory.
-
-
-### Usage of multiplex_srt_seq_first_pass_peaks.py
-#### Dependencies
-
-The following packages and versions were used to create and test this script using **Python 3.12.10**:
-
-| Package | Version | Purpose |
-|---|---|---|
-| [polars](https://docs.pola.rs/user-guide/installation/) | 1.31.0 | Fast DataFrames manipulation |
-| [pandas](https://pandas.pydata.org/docs/getting_started/install.html) | 2.2.3 | DataFrames, pybedtools input |
-| [pybedtools](https://daler.github.io/pybedtools/main.html) | 0.12.0 | Genomic intervals intersections |
-| [pycallingcards](https://pycallingcards.readthedocs.io/en/latest/#) | 1.0.0 | Fragment-based peak calling |
-| [UMI-tools](https://umi-tools.readthedocs.io/en/latest/INSTALL.html) | 1.1.6 | SRT barcode clustering to deduplicate within peak |
-| [tqdm](https://pypi.org/project/tqdm/) | 4.67.1 | Progress bars |
-| [bedtools](https://bedtools.readthedocs.io/en/latest/content/installation.html) | 2.31.1 | (external, required for pybedtools) |
-
-*Other versions may be compatible*
-
-#### Installation
-
-Install all required Python packages with pip:
-```bash
-pip install polars==1.31.0 pandas==2.2.3 pybedtools==0.12.0 pycallingcards==1.0.0 umi_tools==1.1.6 tqdm==4.67.1
-```
-> **Note:**
-> pybedtools requires bedtools be installed on your system and available in your `$PATH`.
-> Install with conda:
-> ```bash
-> conda install -c bioconda bedtools
-> ```
-> Or with apt (on Ubuntu):
-> ```bash
-> sudo apt-get install bedtools
-> ```
-
-**Checking installed versions**
-To check package versions, run the following in the terminal:
-```bash
-python -c "import polars, pandas, pybedtools, tqdm, umi_tools, pycallingcards as cc; print('polars:', polars.__version__); print('pandas:', pandas.__version__); print('pybedtools:', pybedtools.__version__); print('tqdm:', tqdm.__version__); print('umi_tools:', umi_tools.__version__); print('pycallingcards:', cc.__version__)"
-bedtools --version
-```
----
-#### Default parameters command line
-```bash
-python multiplex_srt_seq_first_pass_peaks.py \
-  --input_dir /path/to/qbed_files \
-  --output_dir /path/to/results \
-  --annotation_file /path/to/annotation_file.tsv \
-  --workers 10 \
-  --sample_barcode_dist_threshold 2 \
-  --srt_bc_dist_threshold 1 \
-  --min_rows_threshold 50000 \
-  --method CCcaller \
-  --reference hg38 \
-  --pvalue_cutoff 0.01 \
-  --pvalue_adj_cutoff 0.01 \
-  --min_insertions 5 \
-  --minlen 0 \
-  --extend 200 \
-  --maxbetween 150 \
-  --minnum 0 \
-  --lam_win_size 1000000
-```
-min_insertions, minlen, extend, maxbetween, minnum, lam_win_size all refer to the pycallingcards peak caller settings. Full description available [here](https://pycallingcards.readthedocs.io/en/latest/api/reference/pycallingcards.preprocessing.call_peaks.html).
-
-
-#### Arguments
-- `--input_dir`
-  Directory containing input `.qbed`, `.bed`, `.qbed.gz`, or `.bed.gz` files. Each file should be in standard qbed/bed format.
-- `--output_dir`
-  Directory where output files will be written.
-- `--annotation_file`
-  Path to the annotation file (see format below).
-
-- `--workers`
-  Number of parallel worker processes for peak calling (default: 10). One worker will be assigned a sample_name and perform all functions on that sample_name.
-
-- `--sample_barcode_dist_threshold`
-  - Maximum Hamming distance allowed for correcting sample barcodes (default: 2).
-  - The value set here must be less than the minimal Hamming distance across all sample barcodes.
-  - A value of 2 means that sample barcodes with ≤ 2 mismatches from each sample barcode in the annotation file will be corrected to the sample barcode in the annotation file.
-  - A higher value here means a less stringent filter to correct sample barcode sequencing errors into the sample barcode in the annotation file.
-
-- `--srt_bc_dist_threshold`
-  - Maximum Hamming distance for SRT barcode clustering and correction (default: 1).
-  - A value of 1 means that only SRT barcodes with ≤ 1 mismatches from each other will be considered the same SRT barcode.
-  - A higher value means more aggressive SRT barcode clustering and correction.
-
-- Additional parameters for fragment-based peak calling (see pycallingcards website for more details):
-  - `--pvalue_cutoff`, `--pvalue_adj_cutoff`, `--min_insertions`, `--minlen`, `--extend`, `--maxbetween`, `--minnum`, `--lam_win_size`
-  - It is recommended to leave these parameters at the default values.
-  - The purpose of these parameters is to define all regions of concentrated fragments for subsequent SRT-barcode-based peak boundary definitions and donwstream analysis.
-  - Fragment peaks with <5 fragments following SRT barcode correction are considered noise and discarded from the analysis.
-
-
-#### Supported input file formats
-- The file should ***not*** have a header.
-- `.qbed`, `.bed`, `.qbed.gz`, `.bed.gz`
-- Each file must contain columns in the order:
-  `chrom`, `start`, `end`, `reads`, `strand`, `name`
-- The `name` field should be formatted as:
-  `library_name/sample_barcode/srt_barcode`
-
-**Example input file row (no header)**
-```
-chr1    12345    12359   100     +         [library_name]/[sample_barcode]/[srt_barcode]
-```
-
-#### Annotation file format
-
-This file should be a `.csv` or `.tsv` (tab-separated values) format. The columns must appear **in this order**:
-**library_name**, **sample_barcode**, **sample_name**, **group_name**.
-
-**Example annotation file (tab-separated):**
-```
-library_name	sample_barcode	sample_name	group_name
-Library_A	AAGGCAGACG	Rep1_HyPBase	HyPBase
-Library_A	TACCGCTGAC	Rep1_TF_A	   TF_A
-Library_A	AAGATTAGAC	Rep1_TF_B	   TF_B
-Library_A	AGTATGACCG	Rep1_TF_C	   TF_C
-Library_A	AGTATGACCG	Rep2_TF_A	   TF_A
-Library_B	AAGGCAGACG	Rep2_HyPBase	HyPBase
-Library_B	TACCGCTGAC	Rep2_TF_A	   TF_A
-Library_B	AAGATTAGAC	Rep2_TF_B	   TF_B
-Library_B	AGTATGACCG	Rep2_TF_C	   TF_C
-```
-- **The same `sample_name` may be used across different libraries.**
-  - In the example above, the library name will be Library_A__Library_B for Rep2_TF_A.
-  - If you want the separate libraries to be treated as independent, you must use unique labels, such as Rep2_TF_A_LibA and Rep2_TF_A_LibB.
-
----
-
-### Output files of multiplex_srt_seq_first_pass_peaks.py
-
-- `<output_dir>/merged_srt_barcode_based_peaks.tsv`
-  Tab-separated table containing all merged (bedtools merge) peaks with per group and per sample and sample statistics. See variable definitions below.
-- `<output_dir>/column_definitions.tsv`
-  Tab-separated table describing all columns in `final_results.tsv`.
-- `<output_dir>/collapsed_per_sample/sample.parquet`
-  The subset of the qbed rows corresponding to the sample_name in the annotation file.
-- `<output_dir>/sample_peaks/sample_peaks.parquet`
-  The peaks called after SRT barcode deduplication and defining the SRT barcode peak boundaries for each sample_name in the annotation file.
-- `<output_dir>/pipeline.log`
-  Log file of all steps, warnings, and errors.
-- `<output_dir>/pybedtools_tmp/`
-  Temporary files for bedtools operations (auto-cleaned at completion).
-
----
-
-### Output column names with descriptions of multiplex_srt_seq_first_pass_peaks.py
-
-| Variable | Description |
-|---|---|
-| consensus_peak_id | chrom:consensus_peak_start-consensus_peak_end |
-| chrom | chromosome |
-| consensus_peak_start | start coordinate of final merged, pan-dataset consensus peak |
-| consensus_peak_end | end coordinate of final merged, pan-dataset consensus peak |
-| consensus_peak_width | width (end – start) of final merged, pan-dataset consensus peak |
-| num_samples_in_consensus_peak | number of unique sample_name values in this consensus peak |
-| num_groups_in_consensus_peak | number of unique group_name values in this consensus peak |
-| sample_name | sample identifier (from annotation file). This is the peak calling unit; could be a replicate (e.g., replicate-1_TF-A), a unique time point (e.g., timepoint1_replicate1_TF-A), or a unique experimental condition (e.g., drugX_replicate1_TF-A). |
-| group_name | group identifier (from annotation file). Used to aggregate stats across samples belonging to the same broader group. Examples: "TF_A", "timepoint1_TF-A", or "drugX_TF-A". |
-| fragment_peak_start_for_sample | fragment-based peak start coordinate for this sample_name |
-| fragment_peak_end_for_sample | fragment-based peak end coordinate for this sample_name |
-| fragment_peak_width_for_sample | fragment-based peak width (end – start) for this sample_name |
-| srt_bc_peak_start_for_sample | SRT-barcode-based peak start coordinate for this sample_name |
-| srt_bc_peak_end_for_sample | SRT-barcode-based peak end coordinate for this sample_name |
-| srt_bc_peak_width_for_sample | SRT-barcode-based peak width (end – start) for this sample_name |
-| sample_total_reads_in_consensus_peak | total read count in consensus peak for this sample_name |
-| sample_total_fragments_in_consensus_peak | total fragment count (merged qbed rows after SRT-barcode correction and deduplication) in consensus peak for this sample_name |
-| sample_total_insertions_in_consensus_peak | total unique insertions (unique SRT barcodes) in consensus peak for this sample_name |
-| group_total_reads_in_consensus_peak | sum of sample_total_reads_in_consensus_peak across all sample_name values in this group_name |
-| group_total_fragments_in_consensus_peak | sum of sample_total_fragments_in_consensus_peak across all sample_name values in this group_name |
-| group_total_insertions_in_consensus_peak | sum of sample_total_insertions_in_consensus_peak across all sample_name values in this group_name |
-
----
-
-## Script 2: `generate_insertion_maps.py`
-
-This post-processing script generates `bedGraph` and `BigWig` files for visualizing insertion data in a genome browser. It identifies the single most likely insertion site for each unique SRT barcode and can normalize signal between experimental groups.
-
-### Workflow
-
-1.  **Per-Sample Insertion Mapping**: For each sample, processes the collapsed fragment data to determine the single most probable insertion coordinate for each unique SRT barcode using strand-aware logic.
-2.  **Group Aggregation**: Aggregates the per-sample insertion maps based on `group_name`.
-3.  **Normalization**: If multiple groups exist, calculates size factors based on the geometric mean of total unique insertions to normalize signal across groups, enabling direct comparison.
-4.  **Validation**: Compares its calculated total insertion counts against the results from Script 1 to confirm total unique counts for all conditions is the same.
-5.  **Binned Sum Track Generation**: If `--sum_window_size` is provided (default 50bp), generates additional BigWig tracks where the normalized signal is summed across fixed-width genomic windows.
-    - Once the script runs fully the first time, the output files will be detected, and the script will skip to the binning step. This allows for testing of multiple bin sizes.
-    - This is recommended because the insertions site positions used are the best approximation of where the true transposon/DNA junction lies.
-    - Summing signal in bins only affects visualization and is simply a way to integrate the unique insertions that likely end in the same position if we were to know exactly where the read hits the junction.
-
-### Usage of `generate_insertion_maps.py`
-
-#### Dependencies
-Requires all dependencies from Script 1, plus:
-
-| Package | Version | Purpose |
-|---|---|---|
-| [numpy](https://numpy.org/install/) | 1.26.4+ | Numerical operations for binning |
-| [pyBigWig](https://pypi.org/project/pyBigWig/) | 0.3.22+ | Reading/writing BigWig files |
-| [bedGraphToBigWig](http://hgdownload.soe.ucsc.edu/admin/exe/) | (any) | (UCSC tool for bedGraph to bigWig conversion) |
-
-- Also, chrom.sizes files are needed bigWig file generation. Those for hg38 are provided in this repo.
-
-
-#### Installation
-
-1.  Install additional Python packages:
-    ```bash
-    pip install numpy pyBigWig
-    ```
-2.  Install `bedGraphToBigWig` from the [UCSC binary utilities directory](http://hgdownload.soe.ucsc.edu/admin/exe/) or with conda:
-    ```bash
-    conda install -c bioconda ucsc-bedgraphtobigwig
-    ```
-
-#### Command Line Example
-
-```bash
-python generate_insertion_maps.py \
-    --output_dir_of_multiplex_srt_seq_first_pass_peaks /path/to/main/pipeline/output \
-    --ins_map_output_dir /path/to/insertion_map_results \
-    --annotation_file /path/to/annotation_file.tsv \
-    --chrom_sizes /path/to/hg38.chrom.sizes \
-    --srt_bc_dist_threshold 1 \
-    --workers 8 \
-    --sum_window_size 50
-```
-
-#### Arguments
-* `--output_dir_of_multiplex_srt_seq_first_pass_peaks`: **(Required)** Path to the output directory from Script 1.
-* `--ins_map_output_dir`: **(Required)** Directory to save the output insertion maps.
-* `--annotation_file`: **(Required)** The same annotation file used for Script 1.
-* `--chrom_sizes`: **(Required)** Path to a two-column, tab-separated chromosome sizes file.
-* `--srt_bc_dist_threshold`: **(Required)** Must be the same value used for Script 1.
-* `--sum_window_size`: (Optional) If set, generates binned summary tracks (e.g., `50`).
-
-### Output Files of `generate_insertion_maps.py`
-
-All files are saved within the `--ins_map_output_dir`.
-- `raw_unique_insertions_per_sample_bedgraph/` & `..._bigwig/`
-- `raw_unique_insertion_count_per_group_bedgraph/` & `..._bigwig/`
-- `size_normalized_unique_insertions_per_group_bedgraph/` & `..._bigwig/`
-- `binned_sum_bigwig_{window_size}bp/` (Optional)
-
----
-## Key details of data processing (applies to both multiplex_srt_seq_first_pass_peaks.py and generate_insertion_maps.py)
-
-### 'strand', 'start', 'end', and read orientation in relation to the tranpsoson
-- The R2 read end is reported in the input file.
-- The strand in the qbed refers the strand that the **transposon** was inserted into, not the strand of the read.
-- By convention of the alignment pipeline,
-  - **'end' coordinate** for a **'+'** strand row is the true end of the read
-  - **'start' coordinate** for a **'-'** strand row is the true end of the read.
-
-- Reads that hit the transposon are truncated to the last base prior to beginning of the transposon.
-
-### Summary:
-  - For a **'+'** strand row in the qbed:
-    - **Transposon** is inserted on the **'+'** strand.
-    - R2 read is moving  **5' <- 3'**.
-    - **'end' coordinate** is the true end of the read.
-    - **Smallest 'end' coordinate** (most upstream) is the closest to the transposon.
-
-  - For a **'-'** strand row in the qbed:
-    - **Transposon** is inserted on the **'-'** strand.
-    - R2 read is moving  **5' -> 3'**.
-    - **'start' coordinate** is the true end of the read.
-    - **Largest start coordinate** (most downstream) is the closest to the transposon.
-
-### Key logic for visualization
-- **Frequently, multiple fragments of the same SRT barcode will be present in the same peak.**
-  - When generating SRT barcode-based peaks, the count of unique SRT barcodes suffices.
-  - However, for visualization a single representative genomic coordinate must be chosen for that SRT barcode.
-  - Using the same strand-aware logic explained directly above,
-    - The most representative coordinate for a **'+' strand SRT barcode** is the *minimum* (most upstream) 'end' coordinate among all fragments of that SRT barcode in the SRT barcode-based peak.
-    - The most representative coordinate for a **'-' strand SRT barcode** is the *maximum* (most downstream) 'start' coordinate among all fragments of that SRT barcode in the SRT barcode-based peak.
-   
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # **Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization**
 
 ## **Order to run scripts**
 
-1. ### **step\_1\_raw\_qbed\_to\_insertion\_maps.py**
+1. ### **step_1_raw_qbed_to_insertion_maps.py**
 
    * **Main goal:** A comprehensive, annotation-driven script that processes raw qbed files into final, 1-bp resolution insertion maps for each experimental group. It performs barcode correction, annotation, fragment-based peak calling (to define regions of interest), and precise insertion site mapping.  
      * **INPUT:** Raw qbed/bed file(s) and an annotation file.  
      * **OUTPUT:** Per-sample and per-group raw and normalized insertion counts as bedgraph and bigwig files, and per-group insertion coordinates as a qbed file.
 
-2. ### **step\_2\_run\_span\_peak\_caller.sh**
+2. ### **step_2_run_span_peak_caller.sh**
 
-   * **Main goal:** Call peaks on the group-level insertion data generated by Step 1\. This step uses the SPAN2.0 peak caller (https://github.com/JetBrains-Research/span) to identify regions of significantly concentrated insertions for each group, without background subtraction.  
-     * **INPUT:** The per-group insertion coordinates qbed file from Step 1\.  
+   * **Main goal:** Call peaks on the group-level insertion data generated by Step 1. This step uses the SPAN2.0 peak caller (https://github.com/JetBrains-Research/span) to identify regions of significantly concentrated insertions for each group, without background subtraction.  
+     * **INPUT:** The per-group insertion coordinates qbed file from Step 1.  
      * **OUTPUT:** Peak files (.peak) for each group, representing putative TF binding sites.
 
-3. ### **step\_3\_generate\_peak\_by\_group\_count\_matrices.py**
+3. ### **step_3_generate_peak_by_group_count_matrices.py**
 
-   * **Main goal:** Quantify the signal within the peaks defined in Step 2\. For each group's peak set, this script counts the number of insertions from *every* other group (including controls), creating comprehensive count matrices.  
-     * **INPUT:** Per-group peak files from Step 2 and per-group insertion count bedgraph files from Step 1\.  
+   * **Main goal:** Quantify the signal within the peaks defined in Step 2. For each group's peak set, this script counts the number of insertions from *every* other group (including controls), creating comprehensive count matrices.  
+     * **INPUT:** Per-group peak files from Step 2 and per-group insertion count bedgraph files from Step 1.  
      * **OUTPUT:** A peak-by-group insertion count matrix for each group's peak set.
 
-4. ### **step\_4\_DESeq2\_Diff\_Peaks\_HOMER-Annotations\_and\_Motifs.R**
+4. ### **step_4_DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R**
 
    * **Main goal:** Perform extensive downstream analysis, including differential peak calling, peak annotation, and motif discovery. This script defines final TF binding sites by comparing experimental groups to a control, identifies group-specific peaks, annotates peak locations with HOMER, and performs motif enrichment analysis.  
      * **INPUT:** Peak-by-group count matrices from Step 3 and the annotation file.  
@@ -465,7 +62,7 @@ The method is antibody-independent and semi-multiplexed. Because both the sample
 
 ---
 
-## **Script 1: step\_1\_raw\_qbed\_to\_insertion\_maps.py**
+## **Script 1: step_1_raw_qbed_to_insertion_maps.py**
 
 This is a processing pipeline that combines SRT barcode correction and assignment to the fragment that is most proximal or at the transposon from which the transcritpt was derived.
 
@@ -497,36 +94,36 @@ This is a processing pipeline that combines SRT barcode correction and assignmen
 
 ### **Usage**
 
-python step\_1\_raw\_qbed\_to\_insertion\_maps.py \\  
-    \--input\_dir /path/to/qbed\_files \\  
-    \--output\_dir /path/to/results \\  
-    \--annotation\_file /path/to/annotation\_file.tsv \\  
-    \--chrom\_sizes /path/to/hg38.chrom.sizes \\  
-    \--workers 4 \\  
-    \--sample\_barcode\_dist\_threshold 2 \\  
-    \--srt\_bc\_dist\_threshold 1 \\  
-    \--min\_rows\_threshold 50000 \\  
-    \--sum\_window\_size 50 
+python step_1_raw_qbed_to_insertion_maps.py \  
+    --input_dir /path/to/qbed_files \  
+    --output_dir /path/to/results \  
+    --annotation_file /path/to/annotation_file.tsv \  
+    --chrom_sizes /path/to/hg38.chrom.sizes \  
+    --workers 4 \  
+    --sample_barcode_dist_threshold 2 \  
+    --srt_bc_dist_threshold 1 \  
+    --min_rows_threshold 50000 \  
+    --sum_window_size 50 
 
 ### **Arguments**
 
-* \--input\_dir: Directory containing input .qbed, .bed, .qbed.gz, or .bed.gz files.  
-* \--output\_dir: Directory where output files will be written.  
-* \--annotation\_file: Path to the annotation file (TSV/CSV with header: library\_name,sample\_barcode,sample\_name,group\_name).  
-* \--chrom\_sizes: Path to a chromosome sizes file (e.g., hg38.chrom.sizes).  
-* \--workers: Number of parallel worker processes (default: 10).  
-* \--sample\_barcode\_dist\_threshold: Max Hamming distance for correcting sample barcodes (default: 2).  
-* \--srt\_bc\_dist\_threshold: Max Hamming distance for SRT barcode (UMI) clustering with UMI-tools (default: 1).  
-* \--min\_rows\_threshold: Minimum number of fragments for a sample to be processed (default: 50000).  
-* \--sum\_window\_size: Window size (bp) for binned summary BigWig tracks (default: 50).  
-* Additional parameters for the internal pycallingcards peak caller (--pvalue\_cutoff, \--extend, etc.) are available.
+* --input_dir: Directory containing input .qbed, .bed, .qbed.gz, or .bed.gz files.  
+* --output_dir: Directory where output files will be written.  
+* --annotation_file: Path to the annotation file (TSV/CSV with header: library_name,sample_barcode,sample_name,group_name).  
+* --chrom_sizes: Path to a chromosome sizes file (e.g., hg38.chrom.sizes).  
+* --workers: Number of parallel worker processes (default: 10).  
+* --sample_barcode_dist_threshold: Max Hamming distance for correcting sample barcodes (default: 2).  
+* --srt_bc_dist_threshold: Max Hamming distance for SRT barcode (UMI) clustering with UMI-tools (default: 1).  
+* --min_rows_threshold: Minimum number of fragments for a sample to be processed (default: 50000).  
+* --sum_window_size: Window size (bp) for binned summary BigWig tracks (default: 50).  
+* Additional parameters for the internal pycallingcards peak caller (--pvalue_cutoff, --extend, etc.) are available.
 
 ### **Core Logic: Defining the 1-bp Insertion Site**
 
 For each unique SRT barcode within a fragment-based peak, the script identifies the single coordinate most proximal to the actual insertion event based on strand of the transposon:
 
-* For **'+' strand** transposon fragments, the read direction is 5' \<- 3'. The end coordinate in the qbed is the true end of the read. The script selects the **minimum end coordinate** across all fragments for that SRT barcode.  
-* For **'-' strand** transposon fragments, the read direction is 5' \-\> 3'. The start coordinate in the qbed is the true end of the read. The script selects the **maximum start coordinate** across all fragments for that SRT barcode.
+* For **'+' strand** transposon fragments, the read direction is 5' <- 3'. The end coordinate in the qbed is the true end of the read. The script selects the **minimum end coordinate** across all fragments for that SRT barcode.  
+* For **'-' strand** transposon fragments, the read direction is 5' -> 3'. The start coordinate in the qbed is the true end of the read. The script selects the **maximum start coordinate** across all fragments for that SRT barcode.
    * This is oppositie of convention because the strand refers to the strand of the transposon, not the read. For example, the read is on the - strand if the transposon is on the + strand.
  
 This process results in a single, representative 1-bp coordinate for each unique SRT barcode in the region.
@@ -547,38 +144,38 @@ This process results in a single, representative 1-bp coordinate for each unique
 
 ### **Output Directories**
 
-* collapsed\_fragments\_per\_sample/: Intermediate partitioned data for each sample.  
-* fragment\_peaks\_per\_sample/: Intermediate fragment-based peaks for each sample.  
-* raw\_unique\_insertions\_per\_sample\_bedgraph/ & ...\_bigwig/  **Bedgraph is an input for Step 3\.**
-* raw\_unique\_insertion\_count\_per\_group\_bedgraph/ & ...\_bigwig/  
-* raw\_unique\_insertion\_count\_per\_group\_qbed/: **Input for Step 2\.**  
-* size\_normalized\_unique\_insertions\_per\_group\_bedgraph/ & ...\_bigwig/  
-* binned\_normalized\_count\_sum\_bigwig.../: Optional binned tracks for visualization.
+* collapsed_fragments_per_sample/: Intermediate partitioned data for each sample.  
+* fragment_peaks_per_sample/: Intermediate fragment-based peaks for each sample.  
+* raw_unique_insertions_per_sample_bedgraph/ & ..._bigwig/  **Bedgraph is an input for Step 3.**
+* raw_unique_insertion_count_per_group_bedgraph/ & ..._bigwig/  
+* raw_unique_insertion_count_per_group_qbed/: **Input for Step 2.**  
+* size_normalized_unique_insertions_per_group_bedgraph/ & ..._bigwig/  
+* binned_normalized_count_sum_bigwig.../: Optional binned tracks for visualization.
 
 ---
 
-## **Script 2: step\_2\_run\_span\_peak\_caller.sh**
+## **Script 2: step_2_run_span_peak_caller.sh**
 
 This script runs the SPAN2.0 peak caller (https://github.com/JetBrains-Research/span) on the per-group qbed files generated in Step 1 to identify regions of significant insertion concentration. These are used to determine sites above the unfused transposase (HyPBase) background control.
 
 ### **Usage**
 
-bash step\_2\_run\_span\_peak\_caller.sh \\  
-    \-j /path/to/span.jar \\  
-    \-i /path/to/step1/raw\_unique\_insertion\_count\_per\_group\_qbed \\  
-    \-o /path/to/span\_peak\_output \\  
-    \-c /path/to/hg38.chrom.sizes \\  
-    \-b 50 \\  
-    \-f 0.01
+bash step_2_run_span_peak_caller.sh \  
+    -j /path/to/span.jar \  
+    -i /path/to/step1/raw_unique_insertion_count_per_group_qbed \  
+    -o /path/to/span_peak_output \  
+    -c /path/to/hg38.chrom.sizes \  
+    -b 50 \  
+    -f 0.01
 
 ### **Arguments**
 
-* \-j: Path to the SPAN jar file.  
-* \-i: Input directory containing .qbed files from Step 1\.  
-* \-o: Directory for output peak files.  
-* \-c: Path to the chromosome sizes file.  
-* \-b: Bin size for SPAN analysis (default: 50).  
-* \-f: False Discovery Rate (FDR) cutoff (default: 0.01).
+* -j: Path to the SPAN jar file.  
+* -i: Input directory containing .qbed files from Step 1.  
+* -o: Directory for output peak files.  
+* -c: Path to the chromosome sizes file.  
+* -b: Bin size for SPAN analysis (default: 50).  
+* -f: False Discovery Rate (FDR) cutoff (default: 0.01).
 
 ### **Output**
 
@@ -586,9 +183,9 @@ bash step\_2\_run\_span\_peak\_caller.sh \\
 
 ---
 
-## **Script 3: step\_3\_generate\_peak\_by\_group\_count\_matrices.py**
+## **Script 3: step_3_generate_peak_by_group_count_matrices.py**
 
-This script takes the peaks called for each group (from Step 2\) and the raw unique insertion count bedgraph files (from Step 1\) to quantify the number of insertions from all other groups that fall within each group's peak set. This generates a peak by group matrix for each group's peak set, which allows for DESeq2 style differential peak calling.
+This script takes the peaks called for each group (from Step 2) and the raw unique insertion count bedgraph files (from Step 1) to quantify the number of insertions from all other groups that fall within each group's peak set. This generates a peak by group matrix for each group's peak set, which allows for DESeq2 style differential peak calling.
 
 ### **Dependencies**
 
@@ -596,30 +193,30 @@ This script takes the peaks called for each group (from Step 2\) and the raw uni
 
 ### **Usage**
 
-python step\_3\_generate\_peak\_by\_group\_count\_matrices.py \\  
-    \--peak\_dir /path/to/span\_peak\_output \\  
-    \--peak\_suffix \_b50.span.peak \\  
-    \--bedgraph\_dir /path/to/step1/raw\_unique\_insertion\_count\_per\_group\_bedgraph \\  
-    \--output\_dir /path/to/peak\_matrices\_output \\  
-    \--annotation\_file /path/to/annotation\_file.tsv \\  
-    \--workers 12
+python step_3_generate_peak_by_group_count_matrices.py \  
+    --peak_dir /path/to/span_peak_output \  
+    --peak_suffix _b50.span.peak \  
+    --bedgraph_dir /path/to/step1/raw_unique_insertion_count_per_group_bedgraph \  
+    --output_dir /path/to/peak_matrices_output \  
+    --annotation_file /path/to/annotation_file.tsv \  
+    --workers 12
 
 ### **Arguments**
 
-* \--peak\_dir: Directory containing SPAN2.0 peak files from Step 2\.  
-* \--peak\_suffix: Suffix of the peak files to use (e.g., \_b50.span.peak).  
-* \--bedgraph\_dir: Directory with per-group bedGraph files from Step 1\.  
-* \--output\_dir: Directory to save output files.  
-* \--annotation\_file: The same annotation file used previously.  
-* \--workers: Number of parallel worker processes.
+* --peak_dir: Directory containing SPAN2.0 peak files from Step 2.  
+* --peak_suffix: Suffix of the peak files to use (e.g., _b50.span.peak).  
+* --bedgraph_dir: Directory with per-group bedGraph files from Step 1.  
+* --output_dir: Directory to save output files.  
+* --annotation_file: The same annotation file used previously.  
+* --workers: Number of parallel worker processes.
 
 ### **Output**
 
-* per\_group\_peak\_matrices/: A directory containing a TSV file for each experimental group (e.g., GroupName\_peak\_matrix.tsv). Each file is a matrix with the group's peaks as rows and insertion counts from all groups as columns. This is the **input for Step 4**.
+* per_group_peak_matrices/: A directory containing a TSV file for each experimental group (e.g., GroupName_peak_matrix.tsv). Each file is a matrix with the group's peaks as rows and insertion counts from all groups as columns. This is the **input for Step 4**.
 
 ---
 
-## **Script 4: step\_4\_DESeq2\_Diff\_Peaks\_HOMER-Annotations\_and\_Motifs.R**
+## **Script 4: step_4_DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R**
 
 This is the final analysis script that performs differential analysis, annotation, and visualization.
 Make sure that HOMER is installed and its /bin directory is in the PATH.
@@ -634,18 +231,18 @@ Make sure that HOMER is installed and its /bin directory is in the PATH.
 
 ### **Key Outputs**
 
-* DESeq2\_results\_by\_group/: Detailed DESeq2 results for all pairwise comparisons.  
-* normalized\_peak\_matrices/: The normalized count matrices.  
-* COMBINED\_all\_Group\_vs\_Control\_results.csv: A master table of all peaks found to be significant over the control.  
-* group\_specific\_peaks\_summary.csv: A master table of peaks found to be specific to a single group compared to all others.  
+* DESeq2_results_by_group/: Detailed DESeq2 results for all pairwise comparisons.  
+* normalized_peak_matrices/: The normalized count matrices.  
+* COMBINED_all_Group_vs_Control_results.csv: A master table of all peaks found to be significant over the control.  
+* group_specific_peaks_summary.csv: A master table of peaks found to be specific to a single group compared to all others.  
 * HOMER/: A directory containing:  
-  * Per\_Group\_Annotations/: Genomic annotation for each group's significant peaks.  
-  * HOMER\_motif\_discovery/: Motif enrichment results.  
-  * HOMER\_promoter\_bound\_genes...csv: Lists of protein-coding genes with significant peaks in their promoter regions.  
+  * Per_Group_Annotations/: Genomic annotation for each group's significant peaks.  
+  * HOMER_motif_discovery/: Motif enrichment results.  
+  * HOMER_promoter_bound_genes...csv: Lists of protein-coding genes with significant peaks in their promoter regions.  
 * **Plots:**  
-  * heatmap\_group\_specific\_peaks.png: Heatmap of Z-scored normalized counts for group-specific peaks.  
-  * heatmap\_merged\_peaks\_vs\_Control.png: Heatmap of peaks significantly above control.  
-  * total\_raw\_insertions\_per\_group\_barplot.png: Bar plot of library sizes.  
-  * significant\_peaks\_per\_group\_barplot.png: Bar plot of the number of significant peaks per group.  
-  * HOMER\_genomic\_annotation\_proportions\_plot.png: Stacked bar plot of peak distributions.  
-  * homer\_top\_motifs\_plot.png: Top 10 enriched motifs for each group.
+  * heatmap_group_specific_peaks.png: Heatmap of Z-scored normalized counts for group-specific peaks.  
+  * heatmap_merged_peaks_vs_Control.png: Heatmap of peaks significantly above control.  
+  * total_raw_insertions_per_group_barplot.png: Bar plot of library sizes.  
+  * significant_peaks_per_group_barplot.png: Bar plot of the number of significant peaks per group.  
+  * HOMER_genomic_annotation_proportions_plot.png: Stacked bar plot of peak distributions.  
+  * homer_top_motifs_plot.png: Top 10 enriched motifs for each group.
