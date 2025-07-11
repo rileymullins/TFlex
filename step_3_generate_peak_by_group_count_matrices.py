@@ -1,10 +1,7 @@
 # step_3_generate_peak_by_group_count_matrices.py
 """
-Final peak-processing script for a calling card pipeline.
-
-This script takes pre-called peaks for each group, resizes them, and generates
-per-group intersection matrices. It then creates a final consensus peak set and
-uses it to generate a final consensus count matrix with insertion counts from all groups.
+This script takes the peaks from the SPAN peak caller and the raw unique insertion count bedgraph files for each group
+to generate per-group intersection matrices. These matrices have peak id as rows and the insertion count of each group as columns.
 """
 
 # ==============================================================================
