@@ -79,18 +79,31 @@ This is a processing pipeline that combines SRT barcode correction and assignmen
 
 ### **Dependencies**
 
-| Package | Version |
-| :---- | :---- |
-| polars | 1.31.0 |
-| pandas | 2.2.3 |
-| pybedtools | 0.12.0 |
-| pycallingcards | 1.0.0 |
-| UMI-tools | 1.1.6 |
-| tqdm | 4.67.1 |
-| numpy | 1.26.4+ |
-| pyBigWig | 0.3.22+ |
-| bedtools | 2.31.1 |
-| bedGraphToBigWig | (any) |
+* Python 3.12.10 via Miniforge3 and the package versions were used to develop the python scripts.
+* Other versions may work, but these are verified.
+
+**Python Dependencies**
+| Package         | Version   |
+|-----------------|-----------|
+| polars          | 1.31.0    |
+| pandas          | 2.2.3     |
+| numpy           | 2.2.6     |
+| pybedtools      | 0.12.0    |
+| pycallingcards  | 1.0.0     |
+| tqdm            | 4.67.1    |
+| pyBigWig        | 0.3.24    |
+| UMI-tools       | 1.1.6     |
+
+**Commmand-line Dependencies**
+
+| Tool              | Version   |
+|-------------------|-----------|
+| bedtools          | 2.31.1    |
+| bedGraphToBigWig  | (accessible via pybedtools or command-line) |
+
+**Other Dependencies**
+| hg38.chrom.sizes file | In this repo    |
+
 
 ### **Usage**
 
