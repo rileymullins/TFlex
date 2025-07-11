@@ -377,28 +377,6 @@ All files are saved within the `--ins_map_output_dir`.
     - **'start' coordinate** is the true end of the read.
     - **Largest start coordinate** (most downstream) is the closest to the transposon.
 
-### Key logic for converting the fragment-based peaks to SRT barcode-based peaks
-- **Fragment-based peaks:** Peaks called from the initial input qbed file where every row represents one uniquely fragmented molecule for which the read ended at a different position.
-- **SRT barcode-based peaks:** Refined fragment-based peaks where the start and end coordinates are defined based on the unique SRT barcode positions within the peak.
-
-  - **Peak start** = the **smallest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
-    - This represents the most **upstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
-  - **Peak end** = the **largest** value between the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments.
-    - This represents the most **downstream** value that is the most proximal to the transposon between the '+' and '-' strand fragments.
-  - There is a 100bp extension applied to both ends of the SRT barcode-based peak.
-    - If the SRT barcode-based peak has only fragments of one SRT barcode, then the width would be 0. With 100bp extension to either side, this becomes 200.
-
-- Note that in both instances, the minimum 'end' coordinate of '+' strand fragments and maximum 'start' coordinate of '-' strand fragments are used.
-  - This is because these value represent the most proximal position of all fragments of a given SRT barcode to the transposon.
-  - It is the best approximation of the true transposon insertion site if the read does not make contact with the transposon.
-
-- The SRT barcode-based peak width will nearly always be smaller than the fragment-based peak width.
-  - However on rare occasion, the fragment-based peak width will be larger. The following logic explains how this can happen:
-    - The peak caller will always apply an extension to both side of the fragment-based peak (set by extend parameter, default 200bp to both sides)
-      - A 100bp extension is applied to both sides of the SRT barcode-based peak.
-      - In some cases, a fragment will occur in the extension window of the fragment-based peak *and* will be <100bp from the peak start or end.
-      - If that fragment is from the strand-aware most proximal position of the SRT barcode to the transposon, then the 100bp extension applied after defining the SRT barcode peak will generate a SRT barcode-based peak width > fragment-based peak width.
-
 ### Key logic for visualization
 - **Frequently, multiple fragments of the same SRT barcode will be present in the same peak.**
   - When generating SRT barcode-based peaks, the count of unique SRT barcodes suffices.
@@ -497,7 +475,8 @@ This is a processing pipeline that combines SRT barcode correction and assignmen
 2. For each sample:  
    a. Fragment-based peak calling with CCaller through pyCallingCards to identify regions of interest.
       - Fragment-based peak calling served to identify regions of insertions to make the assignments of each SRT barcode to the single fragment coordinate that is most proximal to the transposon.
-   b. Generation of 1-bp unique insertion site maps for each SRT barcode per sample using strand-aware logic of assignment.  
+   b. SRT barcode correction.
+   c. Generation of 1-bp unique insertion site maps for each SRT barcode per sample using strand-aware logic of assignment.  
 4. Aggregation of per-sample insertion maps by experimental group.  
 5. Generation of bedGraph, BigWig, and qbed files for visualization and downstream analysis.
 
@@ -537,7 +516,7 @@ python step\_1\_raw\_qbed\_to\_insertion\_maps.py \\
 * \--chrom\_sizes: Path to a chromosome sizes file (e.g., hg38.chrom.sizes).  
 * \--workers: Number of parallel worker processes (default: 10).  
 * \--sample\_barcode\_dist\_threshold: Max Hamming distance for correcting sample barcodes (default: 2).  
-* \--srt\_bc\_dist\_threshold: Max Hamming distance for SRT barcode (UMI) clustering (default: 1).  
+* \--srt\_bc\_dist\_threshold: Max Hamming distance for SRT barcode (UMI) clustering with UMI-tools (default: 1).  
 * \--min\_rows\_threshold: Minimum number of fragments for a sample to be processed (default: 50000).  
 * \--sum\_window\_size: Window size (bp) for binned summary BigWig tracks (default: 50).  
 * Additional parameters for the internal pycallingcards peak caller (--pvalue\_cutoff, \--extend, etc.) are available.
@@ -548,9 +527,23 @@ For each unique SRT barcode within a fragment-based peak, the script identifies 
 
 * For **'+' strand** transposon fragments, the read direction is 5' \<- 3'. The end coordinate in the qbed is the true end of the read. The script selects the **minimum end coordinate** across all fragments for that SRT barcode.  
 * For **'-' strand** transposon fragments, the read direction is 5' \-\> 3'. The start coordinate in the qbed is the true end of the read. The script selects the **maximum start coordinate** across all fragments for that SRT barcode.
-   * This is oppositie of convention because the strand refers to the strand of the transposon, not the read. For example, the read is on the - strand if the transposon is on the + strand. 
-
+   * This is oppositie of convention because the strand refers to the strand of the transposon, not the read. For example, the read is on the - strand if the transposon is on the + strand.
+ 
 This process results in a single, representative 1-bp coordinate for each unique SRT barcode in the region.
+
+#### **Summary:**
+  - For a **'+'** strand row in the qbed:
+    - **Transposon** is inserted on the **'+'** strand.
+    - R2 read is moving  **5' <- 3'**.
+    - **'end' coordinate** is the true end of the read.
+    - **Smallest 'end' coordinate** (most upstream) is the closest to the transposon.
+
+  - For a **'-'** strand row in the qbed:
+    - **Transposon** is inserted on the **'-'** strand.
+    - R2 read is moving  **5' -> 3'**.
+    - **'start' coordinate** is the true end of the read.
+    - **Largest start coordinate** (most downstream) is the closest to the transposon.
+
 
 ### **Output Directories**
 
