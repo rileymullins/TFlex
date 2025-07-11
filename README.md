@@ -102,7 +102,7 @@ This is a processing pipeline that combines SRT barcode correction and assignmen
 | bedGraphToBigWig  | (accessible via pybedtools or command-line) |
 
 **Other Dependencies**
-| hg38.chrom.sizes file | In this repo    |
+* hg38.chrom.sizes and hg38.chrom.sizes.fa.fai files. Available for download in this repo.
 
 
 ### **Usage**
