@@ -436,11 +436,11 @@ All files are saved within the `--ins_map_output_dir`.
 
 ## **Table of Contents**
 
-* [Overview of the Method](https://www.google.com/search?q=%23overview-of-the-method)  
-* [Script 1: step\_1\_raw\_qbed\_to\_insertion\_maps.py](https://www.google.com/search?q=%23script-1-step_1_raw_qbed_to_insertion_maps.py)  
-* [Script 2: step\_2\_run\_span\_peak\_caller.sh](https://www.google.com/search?q=%23script-2-step_2_run_span_peak_callersh)  
-* [Script 3: step\_3\_generate\_peak\_by\_group\_count\_matrices.py](https://www.google.com/search?q=%23script-3-step_3_generate_peak_by_group_count_matricespy)  
-* [Script 4: step\_4\_DESeq2\_Diff\_Peaks\_HOMER-Annotations\_and\_Motifs.R](https://www.google.com/search?q=%23script-4-step_4_deseq2_diff_peaks_homer-annotations_and_motifsr)
+* [Overview of the Method](#overview-of-the-method)  
+* [Script 1: step_1_raw_qbed_to_insertion_maps.py](#script-1-step_1_raw_qbed_to_insertion_mapspy)  
+* [Script 2: step_2_run_span_peak_caller.sh](#script-2-step_2_run_span_peak_callersh)  
+* [Script 3: step_3_generate_peak_by_group_count_matrices.py](#script-3-step_3_generate_peak_by_group_count_matricespy)  
+* [Script 4: step_4_DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R](#script-4-step_4_deseq2_diff_peaks_homer-annotations_and_motifsr)
 
 ---
 
