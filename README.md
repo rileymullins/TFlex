@@ -1,31 +1,27 @@
 # Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization 
 
 ## Order to run scripts
-1. ### step_1_raw_qbed_to_fragment_peaks.py
-   - **Main goal:** Turn initial qbed file of fragments into preliminary binding regions defined by insertions.
-      - **INPUT:** qbed(s) of all fragments after initial alignemnt.
-      - **OUTPUT:** per-sample fragment files and preliminary fragment peaks (peak coordinates based on first and last unique insertion in the fragment peak also output).
+1. ### step_1_raw_qbed_to_insertion_maps.py
+   - **Main goal:** assign each unique SRT barcode (i.e. insertion) to its fragment that is most proximal to the transposon. 
+      - **INPUT:** qbed file(s) of all fragments after initial alignment. 
+      - **OUTPUT:** fragment files of each sample and insertion coordinates as a qbed and raw and normalized insertions counts as bedgraph and bigwig files per sample and group.
 
-2. ### step_2_fragments_to_insertion_maps.py
-   - **Main goal:** Generate deduplicated raw and normalized insertion maps (bigwig, bedgraph, qbed) for by selecting the fragment that is most proximal to the to the transposon for each insertion.
-      - **INPUT:** per-sample fragment-based peaks of step 1 and per-sample fragments of step 1.
-      - **OUTPUT:** per-group and per-sample insertion maps (bedgraph, bigwig, and qbed).
+2. ### step_2_run_span_peak_caller.sh
+   - **Main goal:** call peaks without background for all groups using the SPAN2.0 peak caller (https://github.com/JetBrains-Research/span). 
+      - **INPUT:** the per-group insertion coordinates qbed file. 
+      - **OUTPUT:** peaks without background for each group, representing concentrated regions of insertions and putative peaks above background.
      
-3. ### step_3_run_span_peak_caller.sh
-   - **Main goal:** Call final consensus deduplicated insertion maps by selecting the fragment that is most proximal to the to the transposon for each insertion.
-      - **INPUT:** per-group insertion map qbed files of step 2.
-      - **OUTPUT:** final per-group and pan-dataset SPAN-defined regions of concentrated insertions, representing putative peaks.
-
-4. ### step_4_generate_peak_by_group_count_matrices.py
-   - **Main goal:** Define regions of concentrated insertions, representing putative peaks and TF binding sites.
-      - **INPUT:** per-group insertion map qbed files of step 2 and SPAN-defined insertion regions (putative peaks) of step 3.
-      - **OUTPUT:** per-group insertion count matrices of each group's peaks consisting of the unique insertion count of all groups within that group's peaks.
+3. ### step_3_generate_peak_by_group_count_matrices.py
+   - **Main goal:** count the insertion counts of every other group, including the background control HyPBase, in each group's peak set for downstream peak calling above background and differential peak calling.
+      - **INPUT:** per-group insertion count bedgraph files from STEP 1 and per-group peak calls from STEP 2.
+      - **OUTPUT:** peak by group insertion count matrices for each group.
       
-5. ### step_5_DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R
-   - **Main goal:** Define each group's binding sites above control, which are the FINAL TF binding sites.
-      - **INPUT:** per-group insertion count matrices of step 4.
-      - **OUTPUT:** peaks above background (HyPBase) per group, pairwise group v group differential peaks, group v all other group differential peaks, and basic visualization plots.
+4. ### step_4_DESeq2_Differential_Peak_Analysis.R
+   - **Main goal:** Define each group's binding sites above control, which are the FINAL TF binding sites, and differential peaks among groups.
+      - **INPUT:** peak by group insertion count matrices for each group from STEP 3.
+      - **OUTPUT:** peaks above the background control HyPBase, pairwise group vs group differential peaks, and basic peak plots.
 
+<img width="4000" height="3670" alt="overview_of_analysis_method_07-11-2025" src="https://github.com/user-attachments/assets/38bfe237-9f1b-4b1a-b39c-f5b79d9da212" />
 
 ## Table of Contents
 
