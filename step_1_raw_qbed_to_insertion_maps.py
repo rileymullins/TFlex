@@ -1,7 +1,5 @@
 # step_1_raw_qbed_to_insertion_maps.py
 """
-An annotation-driven calling card data processing pipeline.
-
 Major steps:
 1.  Input loading, barcode correction, annotation, and per-sample partitioning.
 2.  For each sample:
@@ -10,7 +8,6 @@ Major steps:
 3.  Aggregation of insertion maps by experimental group.
 4.  Generation of bedGraph, BigWig, and qbed files for visualization and downstream analysis.
 
-This script combines the functionalities of peak calling and insertion mapping into a single, streamlined workflow.
 """
 
 # ==============================================================================
