@@ -152,7 +152,7 @@ This process results in a single, representative 1-bp coordinate for each unique
 * size_normalized_unique_insertions_per_group_bedgraph/ & ..._bigwig/  
 * binned_normalized_count_sum_bigwig.../: Optional binned tracks for visualization.
 
-## The JBR genome browser is recommended for visualization of peaks and bigwig tracks, available here https://github.com/JetBrains-Research/jbr .
+* **The JBR genome browser** is recommended for visualization of peaks and bigwig tracks, available here https://github.com/JetBrains-Research/jbr .
 
 ---
 
@@ -280,4 +280,4 @@ Platform: `aarch64-apple-darwin20`
   * HOMER_genomic_annotation_proportions_plot.png: Stacked bar plot of peak distributions.  
   * homer_top_motifs_plot.png: Top 10 enriched motifs for each group.
  
-## The JBR genome browser is recommended for visualization of peaks and bigwig tracks, available here https://github.com/JetBrains-Research/jbr .
+* **The JBR genome browser** is recommended for visualization of peaks and bigwig tracks, available here https://github.com/JetBrains-Research/jbr .
