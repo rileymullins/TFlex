@@ -152,12 +152,19 @@ This process results in a single, representative 1-bp coordinate for each unique
 * size_normalized_unique_insertions_per_group_bedgraph/ & ..._bigwig/  
 * binned_normalized_count_sum_bigwig.../: Optional binned tracks for visualization.
 
+## The JBR genome browser is recommended for visualization of peaks and bigwig tracks, available here https://github.com/JetBrains-Research/jbr .
+
 ---
 
 ## **Script 2: step_2_run_span_peak_caller.sh**
 
 This script runs the SPAN2.0 peak caller (https://github.com/JetBrains-Research/span) on the per-group qbed files generated in Step 1 to identify regions of significant insertion concentration. These are used to determine sites above the unfused transposase (HyPBase) background control.
 
+### **Installation of SPAN2.0**
+- span-2.0.6652.jar was used.
+- See https://github.com/JetBrains-Research/span for details.
+- Installation of Java is required.
+  
 ### **Usage**
 
 bash step_2_run_span_peak_caller.sh \  
@@ -213,7 +220,7 @@ python step_3_generate_peak_by_group_count_matrices.py \
 ### **Output**
 
 * per_group_peak_matrices/: A directory containing a TSV file for each experimental group (e.g., GroupName_peak_matrix.tsv). Each file is a matrix with the group's peaks as rows and insertion counts from all groups as columns. This is the **input for Step 4**.
-
+  
 ---
 
 ## **Script 4: step_4_DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R**
@@ -272,3 +279,5 @@ Platform: `aarch64-apple-darwin20`
   * significant_peaks_per_group_barplot.png: Bar plot of the number of significant peaks per group.  
   * HOMER_genomic_annotation_proportions_plot.png: Stacked bar plot of peak distributions.  
   * homer_top_motifs_plot.png: Top 10 enriched motifs for each group.
+ 
+## The JBR genome browser is recommended for visualization of peaks and bigwig tracks, available here https://github.com/JetBrains-Research/jbr .
