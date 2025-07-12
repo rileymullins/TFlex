@@ -20,7 +20,6 @@ import os
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 from typing import Optional, List, Tuple
-
 import polars as pl
 import pandas as pd
 import pybedtools
@@ -124,7 +123,10 @@ def process_group_intersections(
         # ------------------------------------------------------------------
         # 3. Intersections --------------------------------------------------
         # ------------------------------------------------------------------
-        peaks_bt = pybedtools.BedTool.from_dataframe(merged_df).sort()
+        # Select only the 4 columns needed to create a standard BED4 file for intersection
+        peaks_for_intersect_df = merged_df[["chrom", "start", "end", "peak_id"]]
+        peaks_bt = pybedtools.BedTool.from_dataframe(peaks_for_intersect_df).sort()
+        
         for other_name, other_bed in all_group_bedgraphs:
             col_name = f"{other_name}_insertion_count"
             other_bt = pybedtools.BedTool(str(other_bed))
