@@ -4,7 +4,7 @@ This script takes the peaks from the SPAN peak caller and the raw unique inserti
 bedgraph files for each group to generate per‑group intersection matrices. These matrices
 have peak_id as rows and the insertion count of each group as columns.
 
---merge_distance (default 200) argument lets you merge any resized peaks that are ≤ N bp apart.
+--merge_distance (default 250) argument lets you merge any resized peaks that are ≤ N bp apart.
    Internally this is done with pybedtools' BedTool.merge(d=N). A value of 0 (default)
    disables merging.
 
@@ -179,7 +179,7 @@ def main():
     p.add_argument("--output_dir", required=True, help="Directory to save output files.")
     p.add_argument("--annotation_file", required=True, help="Annotation file mapping samples to groups.")
     p.add_argument("--workers", type=int, default=12, help="Number of parallel worker processes.")
-    p.add_argument("--merge_distance", type=int, default=200,
+    p.add_argument("--merge_distance", type=int, default=250,
                    help="Distance (bp) within which to merge peaks after resizing; 0 disables.")
 
     args = p.parse_args()
