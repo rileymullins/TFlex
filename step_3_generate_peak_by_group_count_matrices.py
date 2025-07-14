@@ -5,7 +5,7 @@ bedgraph files for each group to generate per‑group intersection matrices. The
 have peak_id as rows and the insertion count of each group as columns.
 
 --merge_distance (default 250) argument lets you merge any resized peaks that are ≤ N bp apart.
-   Internally this is done with pybedtools' BedTool.merge(d=N). A value of 0 (default)
+   Internally this is done with pybedtools' BedTool.merge(d=N).
    disables merging.
 
 """
