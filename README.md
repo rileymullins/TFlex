@@ -4,7 +4,7 @@
 
 1. ### **step_1_raw_qbed_to_insertion_maps.py**
 
-   * **Main goal:** A comprehensive, annotation-driven script that processes raw qbed files into final, 1-bp resolution insertion maps for each experimental group. It performs barcode correction, annotation, fragment-based peak calling (to define regions of interest), and precise insertion site mapping.  
+   * **Main goal:** A comprehensive, annotation-driven script that processes raw qbed files into final SRT insertion maps for each experimental group. It performs barcode correction, annotation, fragment-based peak calling (to define regions of interest), and precise insertion site mapping.  
      * **INPUT:** Raw qbed/bed file(s) and an annotation file.  
      * **OUTPUT:** Per-sample and per-group raw and normalized insertion counts as bedgraph and bigwig files, and per-group insertion coordinates as a qbed file.
 
