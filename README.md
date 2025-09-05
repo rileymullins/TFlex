@@ -47,7 +47,7 @@
 * An SRT is "self-reporting" because it contains a promoter that drives the transcription of RNA containing the junction of the transposon's terminal repeat and the downstream genomic DNA.  
 * Sequencing this RNA maps the transposon insertion site, which represents the approximate TF binding site.
 
-The method is antibody-independent and semi-multiplexed. Because both the sample barcode and the SRT barcode are inserted into genomic DNA, cells from different conditions can be combined following transfection/electroporation if they have distinct sample barcodes.
+The method is a pooled, antibody-independent method to map TFs. Because both the sample barcode and the SRT barcode are inserted into genomic DNA, cells from different conditions can be combined following transfection/electroporation if they have distinct sample barcodes.
 
 
 **Workflow Summary:**
