@@ -1,4 +1,4 @@
-# **Processing Multiplex SRT Sequencing Data to TF Binding Sites and Visualization**
+# **Processing PAINT-seq Data to TF Binding Sites and Visualization**
 
 ## **Order to run scripts**
 
