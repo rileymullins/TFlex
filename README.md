@@ -58,7 +58,8 @@ The method is antibody-independent and semi-multiplexed. Because both the sample
 4. **Demultiplexing:** Post-sequencing, reads are assigned to their original samples based on the sample barcode.  
 5. **Mapping:** The unique transposon insertion sites are identified by their genomic coordinates and the SRT barcode, representing the location and signal of a TF binding event, respectively.
 
-![Picture1](https://github.com/user-attachments/assets/46acac4e-7843-49a7-9e7e-2a5b616febc6)
+[paint-seq-schematic.tiff](https://github.com/user-attachments/files/22176805/paint-seq-schematic.tiff)
+
 
 ---
 
