@@ -513,167 +513,19 @@ for (group in unique_groups) {
   fwrite(group_df, group_output_file)
 }
 
-# ==============================================================================
-# PART 7: GENERATE HEATMAPS OF PEAK SETS
-# ==============================================================================
-
-# ---- 7a. Heatmap for Group-Specific Peaks ----
-# Prepare matrix
-heatmap_matrix_spec <- final_output_df_specific %>%
-  tibble::column_to_rownames("peak_id") %>%
-  select(-any_of(c("chrom", "start", "end", "specific_for_group")))
-
-# Log2 transform and Z-score scale the data
-log_matrix_spec    <- log2(heatmap_matrix_spec + 1)
-scaled_matrix_spec <- t(scale(t(log_matrix_spec)))
-scaled_matrix_spec[is.na(scaled_matrix_spec)] <- 0
-
-# Define row splits from the 'specific_for_group' column
-peak_info <- final_output_df_specific %>%
-  select(peak_id, specific_for_group) %>%
-  tibble::column_to_rownames("peak_id")
-peak_info <- peak_info[rownames(scaled_matrix_spec), , drop = FALSE]
-
-row_splits_by_group <- peak_info$specific_for_group
-
-# Calculate mean Z-score per TF within each specific-peak-set
-group_means <- aggregate(
-  scaled_matrix_spec,
-  by = list(group = row_splits_by_group),
-  FUN = mean
-)
-
-# Determine optimal column and row-split order for diagonal pattern
-dominant_col_indices <- apply(group_means[, -1], 1, which.max)
-group_order          <- order(dominant_col_indices)
-final_group_order    <- group_means$group[group_order]
-
-final_column_order <- unique(colnames(group_means[, -1])[dominant_col_indices[group_order]])
-final_column_order <- c(rev(final_column_order), "HyPBase")
-
-# Determine final row order within each split by Z-score
-final_row_order <- unlist(lapply(final_group_order, function(group_name) {
-  rows_in_group <- rownames(peak_info)[peak_info$specific_for_group == group_name]
-  ordered_rows  <- rows_in_group[order(scaled_matrix_spec[rows_in_group, group_name], decreasing = FALSE)]
-  return(ordered_rows)
-}))
-
-# Define color scale
-q_low_spec  <- quantile(scaled_matrix_spec, 0.05, na.rm = TRUE)
-q_high_spec <- quantile(scaled_matrix_spec, 0.95, na.rm = TRUE)
-
-color_scale <- colorRamp2(
-  breaks = seq(q_low_spec, q_high_spec, length.out = 100),
-  colors = colorRampPalette(rev(c("#D73027", "#FC8D59", "#FEE090", "#FFFFBF", "#E0F3F8", "#91BFDB", "#4575B4")))(100)
-)
-
-# Generate Heatmap Object
-ht_spec <- Heatmap(
-  scaled_matrix_spec,
-  name            = "Z-score",
-  col             = color_scale,
-  row_split       = factor(row_splits_by_group, levels = final_group_order),
-  column_order    = final_column_order,
-  row_order       = final_row_order,
-  cluster_rows    = FALSE,
-  cluster_columns = FALSE,
-  show_row_names  = FALSE,
-  column_title    = "TF-Specific Peaks",
-  row_title       = NULL,
-  column_names_gp = gpar(fontsize = 8, fontface = "bold"),
-  column_title_gp = gpar(fontsize = 10, fontface = "bold"),
-  border          = "black",
-  heatmap_legend_param = list(
-    title     = "Z score\n(norm. counts)",
-    title_gp  = gpar(fontsize = 8, fontface = "bold"),
-    labels_gp = gpar(fontsize = 8)
-  )
-)
-
-# Save as PNG
-png(file.path(output_dir, "heatmap_group_specific_peaks.png"), width = 3, height = 7, units = "in", res = 300)
-draw(ht_spec)
-dev.off()
-
-# Save as PDF
-pdf(file.path(output_dir, "heatmap_group_specific_peaks.pdf"), width = 3, height = 7)
-draw(ht_spec)
-dev.off()
-
-# ---- 7b. Heatmap for 'Group vs. Control' Merged Peaks ----
-# Prepare matrix
-heatmap_matrix_control <- final_output_df_control %>%
-  tibble::column_to_rownames("merged_peak_id") %>%
-  select(-c(chrom, start, end))
-
-# Log2 transform and Z-score scale data
-log_matrix_control    <- log2(heatmap_matrix_control + 1)
-scaled_matrix_control <- t(scale(t(log_matrix_control)))
-scaled_matrix_control[is.na(scaled_matrix_control)] <- 0
-
-# Perform k-means clustering for rows
-set.seed(123)
-kmeans_result <- kmeans(scaled_matrix_control, centers = 12, nstart = 25, iter.max = 100)
-row_clusters  <- kmeans_result$cluster
-
-# Define color scale
-q_low_control  <- quantile(scaled_matrix_control, 0.05, na.rm = TRUE)
-q_high_control <- quantile(scaled_matrix_control, 0.95, na.rm = TRUE)
-color_scale    <- colorRamp2(
-  breaks = seq(q_low_control, q_high_control, length.out = 100),
-  colors = colorRampPalette(rev(c("#D73027", "#FC8D59", "#FEE090", "#FFFFBF", "#E0F3F8", "#91BFDB", "#4575B4")))(100)
-)
-
-# Cluster columns, but keep HyPBase at the end
-cols_to_cluster     <- setdiff(colnames(scaled_matrix_control), "HyPBase")
-col_dendrogram      <- hclust(dist(t(scaled_matrix_control[, cols_to_cluster])))
-clustered_col_order <- colnames(scaled_matrix_control[, cols_to_cluster])[col_dendrogram$order]
-final_column_order  <- c(clustered_col_order, "HyPBase")
-
-# Generate Heatmap Object
-ht_control <- Heatmap(
-  scaled_matrix_control,
-  name                 = "Z-score",
-  col                  = color_scale,
-  show_row_names       = FALSE,
-  row_split            = row_clusters,
-  cluster_columns      = FALSE,
-  column_order         = final_column_order,
-  cluster_rows         = FALSE,
-  column_title         = "Peaks above HyPBase",
-  row_title            = NULL,
-  column_names_gp      = gpar(fontsize = 8, fontface = "bold"),
-  column_title_gp      = gpar(fontsize = 10, fontface = "bold"),
-  border               = "black",
-  heatmap_legend_param = list(
-    title     = "Z score\n(norm. counts)",
-    title_gp  = gpar(fontsize = 8, fontface = "bold"),
-    labels_gp = gpar(fontsize = 8)
-  )
-)
-
-# Save as PNG
-png(file.path(output_dir, "heatmap_merged_peaks_vs_Control.png"), width = 3, height = 7, units = "in", res = 300)
-draw(ht_control)
-dev.off()
-
-# Save as PDF
-pdf(file.path(output_dir, "heatmap_merged_peaks_vs_Control.pdf"), width = 3, height = 7)
-draw(ht_control)
-dev.off()
 
 # ==============================================================================
-# PART 8: SUMMARY PLOTS
+# PART 7: SUMMARY PLOTS
 # ==============================================================================
 
-# ---- 8a. Define Group Order & Palette ----
+# ---- 7a. Define Group Order & Palette ----
 group_order_plots <- c() # Define order
 palette_colors <- c() # Define color palette
 names(palette_colors) <- group_order_plots
 
   # This will be used in part 10c too.
 
-# ---- 8b. Bar Plot of Total Raw Insertions ----
+# ---- 7b. Bar Plot of Total Raw Insertions ----
 bar_data_insertions <- data.frame(
   group_name = names(total_counts),
   total_insertions = total_counts
@@ -706,7 +558,7 @@ ggsave(
   p_insertions, width = 5, height = 4.5, bg = "white"
 )
 
-# ---- 8c. Bar Plot of Total Significant Peaks (vs Control) ----
+# ---- 7c. Bar Plot of Total Significant Peaks (vs Control) ----
 bar_data_simple <- all_sig %>%
   dplyr::count(group, name = "num_peaks") %>%
   mutate(group = factor(group, levels = group_order_plots))
@@ -736,7 +588,7 @@ ggsave(
   p_simple, width = 5, height = 4.5, bg = "white"
 )
 
-# ---- 8d. Bar Plot with Log2FC Bins ----
+# ---- 7d. Bar Plot with Log2FC Bins ----
 bar_data_binned <- all_sig %>%
   mutate(
     log2fc_bin = case_when(
@@ -788,10 +640,10 @@ ggsave(
 )
 
 # ==============================================================================
-# PART 9: PER-GROUP PEAK ANNOTATION & MOTIF ANALYSIS WITH HOMER
+# PART 8: PER-GROUP PEAK ANNOTATION & MOTIF ANALYSIS WITH HOMER
 # ==============================================================================
 
-# ---- 9a. Per-Group Peak Annotation ----
+# ---- 8a. Per-Group Peak Annotation ----
 output_dir_homer      <- file.path(output_dir, "HOMER")
 bed_output_dir        <- file.path(output_dir_homer, "Per_Group_BEDs")
 annotation_output_dir <- file.path(output_dir_homer, "Per_Group_Annotations")
@@ -843,7 +695,7 @@ for (current_group in experimental_groups) {
 
 
 
-# ---- 9b. Process HOMER Annotations and Plot Genomic Distribution ----
+# ---- 8b. Process HOMER Annotations and Plot Genomic Distribution ----
 # 1. Read and process each group's HOMER annotation file
 all_annotation_files <- list.files(
   annotation_output_dir,
@@ -950,7 +802,7 @@ ggsave(
   genomic_distribution_plot, width = 6.5, height = 4, bg = "white"
 )
 
-# ---- 9c. Save Promoter-Bound Gene Lists from HOMER ----
+# ---- 8c. Save Promoter-Bound Gene Lists from HOMER ----
 promoter_bound_genes_homer <- lapply(processed_annotations_per_group, function(annots) {
   annots %>%
     filter(
@@ -989,7 +841,7 @@ if (length(promoter_bound_genes_homer) > 0) {
   )
 }
 
-# ---- 9d. Join Annotations Back to DESeq2 Results ----
+# ---- 8d. Join Annotations Back to DESeq2 Results ----
 # Combine all processed annotation files into one dataframe
 combined_annotations <- bind_rows(processed_annotations_per_group)
 
@@ -1006,10 +858,10 @@ fwrite(
 )
 
 # ==============================================================================
-# PART 10: MOTIF ANALYSIS WITH HOMER
+# PART 9: MOTIF ANALYSIS WITH HOMER
 # ==============================================================================
 
-# ---- 10a. Create Directory and Export BED Files for Motif Discovery ----
+# ---- 9a. Create Directory and Export BED Files for Motif Discovery ----
 motif_analysis_dir <- file.path(output_dir_homer, "HOMER_motif_discovery")
 dir.create(motif_analysis_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -1026,7 +878,7 @@ for (current_group in groups_to_export) {
   cat("Exported", nrow(group_peaks_df), "peaks for Group '", current_group, "' to:", bed_path, "\n")
 }
 
-# --- 10b. Run the run_homer_motifs_script.sh script ---
+# --- 9b. Run the run_homer_motifs_script.sh script ---
 # General usage is:       bash run_homer_motifs.sh <BED_DIR> <GENOME>
 
 # Specific usage:         bash <path to script>/run_homer_motifs.sh <motif_analysis_dir> hg38 <num_workers>
