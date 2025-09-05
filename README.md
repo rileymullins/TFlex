@@ -1,4 +1,4 @@
-# **Processing PAINT-seq Data to TF Binding Sites and Visualization**
+# **Processing PAINT-seq Data to TF Binding Sites**
 
 ## **Order to run scripts**
 
