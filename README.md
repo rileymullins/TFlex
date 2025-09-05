@@ -77,29 +77,10 @@ This is a processing pipeline that combines SRT barcode correction and assignmen
 4. Aggregation of per-sample insertion maps by experimental group.  
 5. Generation of bedGraph, BigWig, and qbed files for visualization and downstream analysis.
 
-### **Dependencies**
-
-* Python 3.12.10 via Miniforge3 and the package versions were used to develop the python scripts.
-* Other versions may work, but these are verified.
-
-**Python Dependencies**
-| Package         | Version   |
-|-----------------|-----------|
-| polars          | 1.31.0    |
-| pandas          | 2.2.3     |
-| numpy           | 2.2.6     |
-| pybedtools      | 0.12.0    |
-| pycallingcards  | 1.0.0     |
-| tqdm            | 4.67.1    |
-| pyBigWig        | 0.3.24    |
-| UMI-tools       | 1.1.6     |
-
-**Commmand-line Dependencies**
-
+### **Commmand-line Dependencies**
 | Tool              | Version   |
 |-------------------|-----------|
 | bedtools          | 2.31.1    |
-| bedGraphToBigWig  | (accessible via pybedtools or command-line) |
 
 **Other Dependencies**
 * hg38.chrom.sizes and hg38.chrom.sizes.fa.fai files. Available for download in this repo.
@@ -207,9 +188,6 @@ bash step_2_run_span_peak_caller.sh \
 
 This script takes the peaks called for each group (from Step 2) and the raw unique insertion count bedgraph files (from Step 1) to quantify the number of insertions from all other groups that fall within each group's peak set. This generates a peak by group matrix for each group's peak set, which allows for DESeq2 style differential peak calling.
 
-### **Dependencies**
-
-* polars, pandas, pybedtools, tqdm
 
 ### **Usage**
 
@@ -293,4 +271,3 @@ Platform: `aarch64-apple-darwin20`
   * HOMER_genomic_annotation_proportions_plot.png: Stacked bar plot of peak distributions.  
   * homer_top_motifs_plot.png: Top 10 enriched motifs for each group.
  
-* **The JBR genome browser** is recommended for visualization of peaks and bigwig tracks, available here https://github.com/JetBrains-Research/jbr .
