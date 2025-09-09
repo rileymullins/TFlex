@@ -233,6 +233,8 @@ Make sure that HOMER is installed and its /bin directory is in the PATH.
 
 ### **Dependencies**
 This script was tested with the following R package versions and R version 4.4.1 (2024-06-14).  
+Platform: aarch64-apple-darwin20
+
 Other versions may work.
 
 | R Package         | Version  |
@@ -251,10 +253,6 @@ Other versions may work.
 | viridis           | 0.6.5    |
 | janitor           | 2.2.0    |
 
-**R Version:**  
-R version 4.4.1 (2024-06-14) — *"Race for Your Life"*  
-Platform: `aarch64-apple-darwin20`
-
 **External Dependency:**  
 - **HOMER**: Must be installed and accessible via command line. Used for genomic annotation and motif discovery.
 
@@ -263,10 +261,8 @@ Platform: `aarch64-apple-darwin20`
 2. **Differential Analysis:** Uses DESeq2 to perform pairwise comparisons for each group's peak set against a control group and all other experimental groups.  
 3. **Significant Peak Identification:** Filters results to identify peaks significantly enriched over the control (HyPBase) and peaks that are enriched for each group relative to all others.  
 4. **Peak Annotation & Motif Analysis:** Uses HOMER to annotate the genomic location of significant peaks and perform *de novo* motif discovery.  
-5. **Visualization:** Generates heatmaps of normalized counts among peaks and summary bar plots.
 
 ### **Key Outputs**
-
 * DESeq2_results_by_group/: Detailed DESeq2 results for all pairwise comparisons.  
 * normalized_peak_matrices/: The normalized count matrices.  
 * COMBINED_all_Group_vs_Control_results.csv: A master table of all peaks found to be significant over the control.  
@@ -275,11 +271,4 @@ Platform: `aarch64-apple-darwin20`
   * Per_Group_Annotations/: Genomic annotation for each group's significant peaks.  
   * HOMER_motif_discovery/: Motif enrichment results.  
   * HOMER_promoter_bound_genes...csv: Lists of protein-coding genes with significant peaks in their promoter regions.  
-* **Plots:**  
-  * heatmap_group_specific_peaks.png: Heatmap of Z-scored normalized counts for group-specific peaks.  
-  * heatmap_merged_peaks_vs_Control.png: Heatmap of peaks significantly above control.  
-  * total_raw_insertions_per_group_barplot.png: Bar plot of library sizes.  
-  * significant_peaks_per_group_barplot.png: Bar plot of the number of significant peaks per group.  
-  * HOMER_genomic_annotation_proportions_plot.png: Stacked bar plot of peak distributions.  
-  * homer_top_motifs_plot.png: Top 10 enriched motifs for each group.
  
