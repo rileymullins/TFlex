@@ -74,7 +74,9 @@ This is a processing pipeline that combines SRT barcode correction and assignmen
 2. For each sample:  
    a. Fragment-based peak calling with CCaller through pyCallingCards to identify regions of interest.
       - Fragment-based peak calling served to identify regions of insertions to make the assignments of each SRT barcode to the single fragment coordinate that is most proximal to the transposon.
+        
    b. SRT barcode correction.
+
    c. Generation of 1-bp unique insertion site maps for each SRT barcode per sample using strand-aware logic of assignment.  
 4. Aggregation of per-sample insertion maps by experimental group.  
 5. Generation of bedGraph, BigWig, and qbed files for visualization and downstream analysis.
@@ -114,6 +116,14 @@ python step_1_raw_qbed_to_insertion_maps.py \
 * --sum_window_size: Window size (bp) for binned summary BigWig tracks (default: 50).  
 * Additional parameters for the internal pycallingcards peak caller (--pvalue_cutoff, --extend, etc.) are available.
 
+
+### **Example Annotation File**
+| library_name       | sample_barcode | sample_name                 | group_name   |
+|--------------------|----------------|-----------------------------|--------------|
+| Library_1 | AAGGCAGACG     | Pool_A_Unfused_HyPBase        | HyPBase      |
+| Library_2 | AAGATTAGAC     | Pool_B_JUN       | JUN      |
+- library_name originates from raw sequencing pre-processing and alignment.
+  
 ### **Core Logic: Defining the 1-bp Insertion Site**
 
 For each unique SRT barcode within a fragment-based peak, the script identifies the single coordinate most proximal to the actual insertion event based on strand of the transposon:
