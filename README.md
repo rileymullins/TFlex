@@ -59,7 +59,7 @@ The method is a pooled, antibody-independent method to map TFs. Because both the
 5. **Mapping:** The unique transposon insertion sites are identified by their genomic coordinates and the SRT barcode, representing the location and signal of a TF binding event, respectively.
 
 **Schematic of TFlex:**
-[paint-seq-schematic.tiff](https://github.com/user-attachments/files/22176805/paint-seq-schematic.tiff)
+[TFlex.tiff](https://github.com/user-attachments/files/22176805/paint-seq-schematic.tiff)
 
 
 ---
