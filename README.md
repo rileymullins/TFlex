@@ -4,7 +4,7 @@
 
 1. ### **step_1_raw_qbed_to_insertion_maps.py**
 
-   * **Main goal:** A comprehensive, annotation-driven script that processes raw qbed files into final SRT insertion maps for each experimental group. It performs barcode correction, annotation, fragment-based peak calling (to define regions of interest), and precise insertion site mapping.  
+   * **Main goal:** Process raw qbed files into final SRT insertion maps for each experimental group. It performs barcode correction, annotation, fragment-based peak calling (to define regions of interest), and insertion site mapping.  
      * **INPUT:** Raw qbed/bed file(s) and an annotation file.  
      * **OUTPUT:** Per-sample and per-group raw and normalized insertion counts as bedgraph and bigwig files, and per-group insertion coordinates as a qbed file.
 
@@ -16,13 +16,13 @@
 
 3. ### **step_3_generate_peak_by_group_count_matrices.py**
 
-   * **Main goal:** Quantify the signal within the peaks defined in Step 2. For each group's peak set, this script counts the number of insertions from *every* other group (including controls), creating comprehensive count matrices.  
+   * **Main goal:** Quantify the signal within the peaks defined in Step 2. For each group's peak set, this script counts the number of insertions from *every* other group (including controls), creating insertion count matrices for each experimental group's peak set.  
      * **INPUT:** Per-group peak files from Step 2 and per-group insertion count bedgraph files from Step 1.  
      * **OUTPUT:** A peak-by-group insertion count matrix for each group's peak set.
 
 4. ### **step_4_DESeq2_Diff_Peaks_HOMER-Annotations_and_Motifs.R**
 
-   * **Main goal:** Perform extensive downstream analysis, including differential peak calling, peak annotation, and motif discovery. This script defines final TF binding sites by comparing experimental groups to a control, identifies group-specific peaks, annotates peak locations with HOMER, and performs motif enrichment analysis.  
+   * **Main goal:** Define final TF binding sites by comparing experimental groups to a control, identify peaks unique to each group, annotates peak locations with HOMER, and perform motif enrichment analysis.  
      * **INPUT:** Peak-by-group count matrices from Step 3 and the annotation file.  
      * **OUTPUT:** Final lists of significant and group-specific peaks, comprehensive summary tables, publication-quality plots (heatmaps, bar plots), and HOMER annotation/motif analysis results.
 
@@ -52,11 +52,11 @@ The method is a pooled, antibody-independent method to map TFs. Because both the
 
 **Workflow Summary:**
 
-1. **Transfection:** Samples are transfected with a large, diverse pool of plasmids. Each pool contains a unique sample barcode but many SRT barcodes.  
+1. **Transfection:** Samples are transfected with a pool of plasmid consisting of a unique sample barcode and many unique SRT barcodes.  
 2. **Pooling:** All samples, each with its unique sample barcode, are pooled after transfection.  
 3. **Library Prep & Sequencing:** The workflow is RNA extraction, cDNA synthesis, SRT amplification, library preparation, and 2x150bp sequencing.  
 4. **Demultiplexing:** Post-sequencing, reads are assigned to their original samples based on the sample barcode.  
-5. **Mapping:** The unique transposon insertion sites are identified by their genomic coordinates and the SRT barcode, representing the location and signal of a TF binding event, respectively.
+5. **Mapping:** The unique transposon insertion sites are identified by their genomic coordinates and the SRT barcode.
 
 **Schematic of TFlex:**
 [TFlex.tiff](https://github.com/user-attachments/files/22176805/paint-seq-schematic.tiff)
