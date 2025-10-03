@@ -291,20 +291,27 @@ final_new_rows <- bind_rows(new_rows_list) %>%
 
 # Combine all results and clean up column names for the final table.
 final_annotated_results_final <- bind_rows(final_annotated_results, final_new_rows) %>%
-  rename(bulk_peripheral_cd8_atac_peak = acr_id,
-         r_squared_simple_linear_regression = r_squared,
-         beta_simple_linear_regression = beta,
-         fdr_simple_linear_regression = fdr_lm,
-         spearman_fdr = fdr_spearman) %>%
-  mutate(annotation = case_when(
-    annotation == "Enhancer" ~ "ENCODE-rE2G_enhancer_region",
-    annotation == "Promoter_Enhancer" ~ "ENCODE-rE2G_enhancer_region_within_5kb_of_tss",
-    annotation == "Promoter" ~ "within_5kb_of_tss_non_enhancer",
-    annotation == "non_acr_promoter" ~ "TF_bind_site_within_1kb_of_tss_no_atac_peak_non_enhancer",
-    TRUE ~ annotation
-  )) %>%
-  select(-is_promoter, -is_enhancer) %>%
-  mutate(enhancer_region_atac_peak_x_gene_pair = paste0(bulk_peripheral_cd8_atac_peak, "_x_", gene)) %>%
+  rename(
+    bulk_peripheral_cd8_atac_peak = acr_id,
+    r_squared_simple_linear_regression = r_squared,
+    beta_simple_linear_regression = beta,
+    fdr_simple_linear_regression = fdr_lm,
+    spearman_fdr = fdr_spearman,
+    within_5_kb_of_tss = is_promoter,
+    in_annotated_enhancer_region = is_enhancer,
+    bulk_peripheral_cd8_tcell_atac_peak_id = acr_id # This second rename of acr_id is crucial
+  ) %>%
+  mutate(
+    annotation = case_when(
+      annotation == "Enhancer" ~ "ENCODE-rE2G_enhancer_region",
+      annotation == "Promoter_Enhancer" ~ "ENCODE-rE2G_enhancer_region_within_5kb_of_tss",
+      annotation == "Promoter" ~ "within_5kb_of_tss_non_enhancer",
+      annotation == "non_acr_promoter" ~ "TF_bind_site_within_1kb_of_tss_no_atac_peak_non_enhancer",
+      TRUE ~ annotation
+    )
+  ) %>%
+  select(-within_5_kb_of_tss, -in_annotated_enhancer_region) %>%
+  mutate(enhancer_region_atac_peak_x_gene_pair = paste0(bulk_peripheral_cd8_tcell_atac_peak_id, "_x_", gene)) %>%
   select(enhancer_region_atac_peak_x_gene_pair, annotation, everything())
 
 # Save the final results.
