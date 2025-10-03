@@ -3,12 +3,12 @@
 # DATE: October 03, 2025
 #
 # DESCRIPTION:
-# This script analyzes enhancer-gene pairs to identify co-regulated and TF-bound elements.
+# This script analyzes enhancer-gene pairs to identify co-regulated and TF-bound regions.
 # Key steps include:
-# 1.  Defining enhancer-gene pairs from promoter proximity and an enhancer database.
+# 1.  Defining enhancer-gene pairs from promoter proximity and the ENCODE-rE2G enhancer database.
 # 2.  Identifying which pairs are bound by specific transcription factors (TFs).
-# 3.  Performing linear regression and correlation analysis to find dynamic pairs.
-# 4.  Adding back promoter-bound genes that were not in the original pairs.
+# 3.  Performing linear regression and correlation analysis to find dynamic, co-regulated enhancer-gene pairs using RNA-seq data and ATAC-seq data lifted-over from h19 to hg38 from Human epigenetic and transcriptional T cell differentiation atlas for identifying functional T cell-specific enhancers. Immunity. 2022 Mar 8;55(3):557-574.e7. doi: 10.1016/j.immuni.2022.02.004. PMID: 35263570; PMCID: PMC9214622.
+# 4.  Add back promoter-bound genes that were not in the original pairs.
 # 5.  Generating paired heatmaps of RNA expression and ATAC accessibility for TF-specific gene sets.
 # 6.  Conducting permutation and Fisher's exact tests for TF binding enrichment at enhancers.
 #==================================================================================================
@@ -60,6 +60,7 @@ annot_ch <- read.csv(file.path(input_dir, "HOMER_annotations_COMBINED_all_Group_
 annot <- rbind(annot_ac, annot_ch)
 
 # Load MultiAssayExperiment object containing paired RNA and ATAC data.
+# RNA-seq data and ATAC-seq data lifted-over from h19 to hg38 from Human epigenetic and transcriptional T cell differentiation atlas for identifying functional T cell-specific enhancers. Immunity. 2022 Mar 8;55(3):557-574.e7. doi: 10.1016/j.immuni.2022.02.004. PMID: 35263570; PMCID: PMC9214622.
 mae_paired <- readRDS(file = file.path(bulk_atac_dir, "wherry_data_paired_rna_atac_multi_assay_experiment.rds"))
 
 # --- 4. EXTRACT AND PREPARE EXPRESSION/ACCESSIBILITY MATRICES ---
@@ -331,7 +332,7 @@ all_model_results_final <- bind_rows(all_model_results_final, final_new_rows)
 write.csv(all_model_results_final, file = file.path(figdir, "with_promoter_genes_added_back_ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
 all_model_results_final <- read.csv(file = file.path(figdir, "with_promoter_genes_added_back_ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
 
-# --- 11. VISUALIZE OVERLAPS WITH EULER DIAGRAMS ---
+# --- 11. VISUALIZE OVERLAPS WITH VENN DIAGRAM ---
 # Venn/Euler diagram for TOX and TCF7 target genes.
 tox_targets <- all_model_results_final %>% filter(TOX_Acute == 1, !is.na(acr_id)) %>% pull(gene) %>% unique()
 tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1, !is.na(acr_id)) %>% pull(gene) %>% unique()
@@ -360,6 +361,7 @@ ggsave(file.path(figdir, "venn_diagram_tox_tcf7_acrs.png"), plot = p, width = 4,
 ggsave(file.path(figdir, "venn_diagram_tox_tcf7_acrs.pdf"), plot = p, width = 4, height = 3)
 
 # --- 12. PLOT TCF7 AND TOX EXPRESSION IN BULK RNA-SEQ DATA ---
+#  RNA-seq data from Human epigenetic and transcriptional T cell differentiation atlas for identifying functional T cell-specific enhancers. Immunity. 2022 Mar 8;55(3):557-574.e7. doi: 10.1016/j.immuni.2022.02.004. PMID: 35263570; PMCID: PMC9214622.
 genes_of_interest <- c("TCF7", "TOX")
 cluster_order <- c("Naive", "SCM-R3-", "SCM-R3+", "CM", "EM1", "EM2", "EMRA", "PD1+CD39+")
 
