@@ -440,7 +440,7 @@ for (set_name in names(sets_list)) {
   rna_z_ordered  <- rna_z[, ordered_cols_df$RNA_ID,  drop = FALSE]
 
   # Perform k-means clustering on columns (samples) to group them.
-  set.seed(123); k <- 3
+  set.seed(1); k <- 3
   km_result_cols <- kmeans(t(rna_z_ordered), centers = k, nstart = 50)
   
   # Reorder columns based on clustering result.
@@ -454,7 +454,7 @@ for (set_name in names(sets_list)) {
 
   # Perform k-means clustering on rows (pairs) to group by expression pattern.
   mean_rna_in_naive <- rowMeans(rna_z_col_ordered[, col_cluster_df$RNA_ID[col_cluster_df$Cell_Subset == "Naive"]], na.rm = TRUE)
-  set.seed(123); km_result_rows <- kmeans(rna_z_ordered, centers = 2, nstart = 50)
+  set.seed(1); km_result_rows <- kmeans(rna_z_ordered, centers = 2, nstart = 50)
   cluster_means <- tapply(mean_rna_in_naive, km_result_rows$cluster, mean)
   high_expr_cluster <- names(which.max(cluster_means))
   low_expr_cluster  <- names(which.min(cluster_means))
