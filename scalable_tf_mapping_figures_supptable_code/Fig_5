@@ -41,17 +41,15 @@ signal_noise_vln_png <- file.path(fig_dir, "signal-to-noise_ratio_vln.png")
 signal_noise_vln_pdf <- file.path(fig_dir, "signal-to-noise_ratio_vln.pdf")
 max_signal_png <- file.path(fig_dir, "max_signal_per_sample.png")
 max_signal_pdf <- file.path(fig_dir, "max_signal_per_sample.pdf")
-all_sig_file <- file.path(peak_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
+peaks_file <- file.path(peak_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
 specific_peaks_file <- file.path(peak_dir, "group_specific_peaks_summary.csv")
 output_peak_fig <- file.path(fig_dir, "Total_Peaks_per_Condition_Plot.png")
 output_peak_pdf <- file.path(fig_dir, "Total_Peaks_per_Condition_Plot.pdf")
 
 # --- 3. LOAD AND FILTER BINNED GENOMIC DATA ---
-# Read the binned insertion count data using data.table for efficiency.
-# The data is pre-filtered to remove chromosome 2 and specific anomalous bins.
 dt <- fread(binned_data_file, nThread = 10) %>%
   arrange(desc(count)) %>%
-  filter(!chr %in% "chr2" & !bin_start %in% c("32916200", "32916400", "32916600"))
+  filter(!chr %in% "chr2" & !bin_start %in% c("32916200", "32916400", "32916600")) # Remove these bins as these are outliers.
 
 # --- 4. CALCULATE SUMMARY STATISTICS PER SAMPLE ---
 # Calculate standard summary statistics (min, max, mean, quartiles) for the insertion counts in each sample.
@@ -84,7 +82,7 @@ col_names <- colnames(log_heatmap_matrix)
 keep_labels <- as.numeric(gsub("%", "", col_names)) %% 10 == 0
 display_col_names <- ifelse(keep_labels, col_names, "")
 
-# Create a custom non-linear color palette for the heatmap.
+# Create a color palette for the heatmap.
 data_range <- range(log_heatmap_matrix, na.rm = TRUE)
 color_breaks <- c(data_range[1],
                   data_range[1] + (data_range[2] - data_range[1]) * 0.25,
@@ -247,7 +245,7 @@ ggsave(p, file = max_signal_pdf, width = 4, height = 4, bg = "white")
 
 # --- 10. ANALYZE AND PLOT PEAK SPECIFICITY ---
 # Load significant peak annotations and a summary of group-specific peaks.
-all_sig <- read.csv(all_sig_file)
+all_sig <- read.csv(peaks_file)
 specific_peaks <- read.csv(specific_peaks_file)
 
 # Define the desired order for TF groups on the plot.
