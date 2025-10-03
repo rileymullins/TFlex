@@ -478,10 +478,35 @@ pheatmap(
   fontsize_number = 15, number_color = "white", cellwidth = 40, cellheight = 40
 )
 
+
+
+# Get the NMF loadings and TF regulons 
+nmf_names <- c(
+  "Exhaustion",
+  "NFkB Signaling",
+  "Activation/Stress Response",
+  "Cell Cycle",
+  "Terminal Effector",
+  "Stemness",
+  "Effector",
+  "Membrane Remodeling",
+  "Interferon Response"
+)
+# Create a named mapping vector: names are NMF_1 ... NMF_8
+nmf_map <- setNames(nmf_names, paste0("NMF_", seq_along(nmf_names)))
+
+loadings <- metacell@reductions[["NMF"]]@feature.loadings
+regulons <- pos_regulons
+tf_names <- names(regulons)
+nmf_programs <- colnames(loadings)
+
+
 # Score the NMF gene programs in the metacell object.
 metacell <- AddModuleScore_UCell(metacell, features = list_of_top_genes, name = "", ncores = 4)
 
-# --- 12. VISUALIZE NMF PROGRAM EXPRESSION ---
+
+
+# --- 12. VISUALIZE NMF PROGRAM EXPRESSION PER GENE ---
 # Create an expression heatmap of NMF program genes.
 metacell$Cluster_names <- factor(metacell$Cluster_names, levels = intersect(full_levels, unique(metacell$Cluster_names)))
 Idents(metacell) <- metacell$Cluster_names
@@ -576,4 +601,88 @@ proportion_bound <- row_annot_df %>%
   group_by(Program) %>%
   summarise(across(all_of(tf_order), ~ mean(.x == "Target"), .names = "{col}"))
 print(proportion_bound)
+
+
+
+
+
+# --- 12. VISUALIZE NMF PROGRAM EXPRESSION AS A MODULE SCORE VIOLIN PLOT ---
+
+
+# Rename metadata columns based on the map
+for (orig_col in names(nmf_map)) {
+  # Get the desired new column name from the map
+  new_col <- nmf_map[[orig_col]]
+  
+  # Create the new column with the data from the original column.
+  metacell@meta.data[[new_col]] <- metacell@meta.data[[orig_col]]
+}
+
+# Prepare data for ggplot 
+# Extract the metadata and the newly named NMF scores into a data frame.
+# This now works because 'nmf_names' is defined.
+plot_data <- metacell@meta.data %>%
+  select(Cluster_names, all_of(nmf_names))
+
+# Reshape the data from wide to long format
+plot_data_long <- plot_data %>%
+  pivot_longer(
+    cols = all_of(nmf_names),
+    names_to = "Program",
+    values_to = "Score"
+  )
+
+# Set the factor levels for the programs to ensure the correct plotting order.
+# This now works because 'prog_order' is defined above.
+plot_data_long$Program <- factor(plot_data_long$Program, levels = prog_order)
+
+# Create the color palette and the plot
+# This now works because 'nmf_names' is defined.
+pal <- setNames(viridis::turbo(length(nmf_names)), nmf_names)
+
+stacked_vln_plot <- ggplot(plot_data_long, aes(x = Cluster_names, y = Score, fill = Program)) +
+  geom_violin(scale = "width", trim = TRUE, show.legend = FALSE, size = 0.2, width = 0.8) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 0.5) +
+  
+  # Facet by program with a free y-axis for each
+  facet_grid(rows = vars(Program), scales = "free") +
+  
+  # Ensure 0 appears in every facet's y-axis
+  geom_blank(aes(y = 0)) +
+  
+  # Apply the color palette
+  scale_fill_manual(values = pal) +
+  
+  # Set theme and labels
+  theme_classic() +
+  theme(
+    panel.spacing = unit(0.5, "lines"),
+    strip.background = element_blank(),
+    strip.text.y = element_text(size = 10, angle = 0, hjust = 0, face = "bold", color = "black"),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8, color = "black"),
+    axis.text.y = element_text(size = 8, color = "black"),
+    axis.title.y = element_text(size = 10, face="bold", color = "black"),
+    axis.title.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.line.x = element_blank()
+  ) +
+  # Add breaks to the y-axis for better readability
+  scale_y_continuous(breaks = scales::breaks_width(0.2))
+
+# Display the plot
+print(stacked_vln_plot)
+
+# Save the plot 
+ggsave(
+  stacked_vln_plot,
+  file = file.path(figdir, "Stacked_NMF_Program_Violin_Plot.png"),
+  height = 8, width = 6.5, units = "in", bg = "white", dpi = 300
+)
+
+ggsave(
+  stacked_vln_plot,
+  file = file.path(figdir, "Stacked_NMF_Program_Violin_Plot.pdf"),
+  height = 8, width = 6.5, units = "in"
+)
+
 
