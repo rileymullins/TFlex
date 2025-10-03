@@ -1,4 +1,6 @@
-# Figure 6 Motif Analysis: Generalizable, Professional, Executable R Script
+# Figure 6
+# October 3, 2025
+# Description: Compare JUN, FOSL1, BATF, and DESynR domain-swapped TF JUN.FOS.BATF binding sites and target gene effects.
 
 #---------------------------------------------------------
 # Load Required Libraries
