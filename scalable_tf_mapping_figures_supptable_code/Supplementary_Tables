@@ -5,10 +5,10 @@
 # DESCRIPTION:
 # This script generates supplementary tables. The includes:
 # 1.  Aggregating HOMER-annotated peak data from multiple experiments (Supplementary Table 1).
-# 2.  Processing a public enhancer-gene link database (Supplementary Table 2).
+# 2.  Exporting cleaned ENCODE-rE2G enhancer-gene database (Supplementary Table 2).
 # 3.  Integrating TF binding, enhancer/promoter links, and expression data to perform
-#     linear regression and correlation analysis on peak-gene pairs (Supplementary Table 3).
-# 4.  Defining TF-gene regulons using proportionality analysis (rho) on single-cell data metacells
+#     linear regression and correlation analysis on peak-gene pairs of all TFs (Supplementary Table 3).
+# 4.  Defining TF-gene bound and associated genes using proportionality analysis (rho) on single-cell data metacells
 #     (Supplementary Tables 4 & 5).
 # 5.  Formatting and exporting NMF gene programs and TF binding proportions
 #     (Supplementary Tables 6 & 7).
