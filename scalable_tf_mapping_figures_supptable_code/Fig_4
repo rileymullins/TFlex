@@ -640,7 +640,9 @@ proportion_bound <- row_annot_df %>%
   summarise(across(all_of(tf_order), ~ mean(.x == "Target"), .names = "{col}"))
 print(proportion_bound)
 
-write.csv(proportion_genes_bound_by_each_tf_in_v2_NMF
+prop_bound_file <- file.path(base_dir_huardb, "huARdb_Full_NMF_Regulon_Analysis_v2/proportion_genes_bound_by_each_tf_in_v2_NMF.csv")
+
+write.csv(prop_bound_file, proportion_bound)
 
 
 
