@@ -54,7 +54,7 @@ promoter_upstream <- 5000
 promoter_downstream <- 5000
 
 # Load pre-defined enhancer-gene pairs from an external database.
-dt <- fread(file=file.path(input_dir, "distinct_gene_pairs_unmerged_final.csv"), nThread = 12) %>%
+dt <- fread(file=file.path(input_dir, "distinct_gene_pairs_unmerged_final.csv"), nThread = 12) %>%  # ENCODE-rE2G annotations (supplementary table 2) 
   distinct(enh_coord, chr, start, end, gene_name)
 
 # Load and combine TF peak annotations for acute and chronic conditions.
