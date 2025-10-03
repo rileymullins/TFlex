@@ -5,7 +5,7 @@
 # DESCRIPTION:
 # This script performs a comparative analysis of binding sites and target gene effects for
 # JUN, FOSL1, BATF, and a DESynR domain-swapped TF (JUN.FOS.BATF). The analysis includes:
-# 1.  Motif enrichment analysis of HOMER results for each TF.
+# 1.  HOMER motif enrichment analysis plot.
 # 2.  Heatmap visualization of normalized peak signals across TFs to identify co-binding patterns.
 # 3.  Quantification and plotting of peak counts for various TF binding combinations.
 # 4.  Identification of gene targets for co-bound sites by integrating peak data with promoter
@@ -41,8 +41,6 @@ suppressPackageStartupMessages({
 })
 
 # --- 2. DEFINE GENERALIZABLE FILE PATHS ---
-# Define a single base directory for portability. All other paths are relative to this.
-# Update this path to the root of the project directory.
 base_dir <- "/path/to/your/project/directory"
 
 # Construct input and output directories from the base path.
