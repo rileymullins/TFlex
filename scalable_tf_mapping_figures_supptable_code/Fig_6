@@ -15,7 +15,6 @@
 #==================================================================================================
 
 # --- 1. LOAD REQUIRED LIBRARIES ---
-# Suppress package startup messages for a cleaner console output.
 suppressPackageStartupMessages({
   library(data.table)
   library(dplyr)
