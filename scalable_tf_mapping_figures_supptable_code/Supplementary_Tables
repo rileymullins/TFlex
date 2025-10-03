@@ -8,7 +8,7 @@
 # 2.  Processing a public enhancer-gene link database (Supplementary Table 2).
 # 3.  Integrating TF binding, enhancer/promoter links, and expression data to perform
 #     linear regression and correlation analysis on peak-gene pairs (Supplementary Table 3).
-# 4.  Defining TF-gene regulons using proportionality analysis (rho) on single-cell data
+# 4.  Defining TF-gene regulons using proportionality analysis (rho) on single-cell data metacells
 #     (Supplementary Tables 4 & 5).
 # 5.  Formatting and exporting NMF gene programs and TF binding proportions
 #     (Supplementary Tables 6 & 7).
