@@ -1,5 +1,4 @@
-
-# Figure 3: DESeq2 ACR-Gene Pairs Full Analysis with Heatmaps
+# Figure 3: DESeq2 ACR-Gene Pairs Full Analysis with Heatmaps (Generalizable Paths)
 
 suppressPackageStartupMessages({
   library(scales)
@@ -75,10 +74,11 @@ suppressPackageStartupMessages({
   options(future.globals.maxSize = 1e9)
 })
 
-figdir <- "/Users/rileymullins/Documents/CC_Figs_08092025/figs/"
-
-python_output_dir <- "/Users/rileymullins/Documents/Acute_v_Chronic_Data"
-output_dir <- file.path(python_output_dir, "STEP_4_output_deseq2_peak_analysis_ACUTE_ONLY")
+# Generalizable directories
+input_dir <- "./input"
+output_dir <- "./output"
+figdir <- file.path(output_dir, "figures")
+dir.create(figdir, recursive = TRUE, showWarnings = FALSE)
 bulk_rna_dir <- file.path(output_dir, "wherry_bulk_rna_seq_analysis")
 bulk_atac_dir <- file.path(output_dir, "wherry_bulk_atac_analysis")
 bzip_results_outdir <- file.path(bulk_atac_dir, "bZIP_combined_linear_regression")
@@ -87,11 +87,11 @@ dir.create(bzip_results_outdir, recursive = TRUE, showWarnings = FALSE)
 promoter_upstream <- 5000
 promoter_downstream <- 5000
 
-dt <- fread(file="/Users/rileymullins/Documents/engreitz_cd8_t_cell_encode_re2g_links/distinct_gene_pairs_unmerged_final.csv", nThread = 12) %>%
+dt <- fread(file=file.path(input_dir, "distinct_gene_pairs_unmerged_final.csv"), nThread = 12) %>%
   distinct(enh_coord, chr, start, end, gene_name)
 
-annot_ac <- read.csv("/Users/rileymullins/Documents/Acute_v_Chronic_Data/STEP_4_output_deseq2_peak_analysis_ACUTE_ONLY/HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
-annot_ch <- read.csv("/Users/rileymullins/Documents/Acute_v_Chronic_Data/STEP_4_output_deseq2_peak_analysis_CHRONIC_ONLY/HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
+annot_ac <- read.csv(file.path(input_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results_acute.csv"))
+annot_ch <- read.csv(file.path(input_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results_chronic.csv"))
 annot <- rbind(annot_ac,annot_ch)
 
 mae_paired <- readRDS(file = file.path(bulk_atac_dir, "wherry_data_paired_rna_atac_multi_assay_experiment.rds"))
@@ -683,3 +683,195 @@ for (set_name in names(sets_list)) {
   dev.off()
   message("Saved heatmaps for set: ", set_name)
 }
+
+# ----------------------------------------
+# Permutation and Fisher test for TOX and TCF7 binding at enhancer regions
+# ----------------------------------------
+
+final_annotated_results <- read.csv( file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+all_model_results_final <- read.csv(file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+
+enhancer_counts_before_filtering <- final_annotated_results %>%
+  distinct(acr_id, .keep_all = TRUE) %>%
+  filter(is_enhancer == TRUE) %>%
+  select(all_of(tf_groups)) %>%
+  summarise_all(~sum(., na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "Transcription_Factor", values_to = "Enhancer_Region_Count") %>%
+  arrange(desc(Enhancer_Region_Count))
+cat("--- TF Counts in Enhancer Regions (Before Filtering) ---\n")
+print(enhancer_counts_before_filtering)
+
+enhancer_counts_after_filtering <- all_model_results_final %>%
+  distinct(acr_id, .keep_all = TRUE) %>%
+  filter(is_enhancer == TRUE) %>%
+  select(all_of(tf_groups)) %>%
+  summarise_all(~sum(., na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "Transcription_Factor", values_to = "Enhancer_Region_Count") %>%
+  arrange(desc(Enhancer_Region_Count))
+cat("\n--- TF Counts in Enhancer Regions (After Filtering) ---\n")
+print(enhancer_counts_after_filtering)
+
+binding_summary <- final_annotated_results %>%
+  mutate(bound_by_TOX = (TOX_Acute == 1),
+         bound_by_TCF7 = (TCF7_Acute == 1),
+         acr_gene = paste0(acr_id, "_x_", gene))
+
+count_both_tox_tcf7 <- binding_summary %>%
+  filter(bound_by_TOX & bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
+  pull(unique_acr_count)
+count_only_tox <- binding_summary %>%
+  filter(bound_by_TOX & !bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
+  pull(unique_acr_count)
+count_only_tcf7 <- binding_summary %>%
+  filter(!bound_by_TOX & bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
+  pull(unique_acr_count)
+cat("--- Summary of Unique ACRs Bound by TOX and TCF7 ---\n")
+cat("Total unique ACRs bound by BOTH TOX and TCF7:", count_both_tox_tcf7, "\n")
+cat("Total unique ACRs bound ONLY by TOX:", count_only_tox, "\n")
+cat("Total unique ACRs bound ONLY by TCF7:", count_only_tcf7, "\n")
+
+count_either_tox_or_tcf7 <- binding_summary %>%
+  filter(bound_by_TOX | bound_by_TCF7) %>%
+  summarise(unique_count = n_distinct(acr_id)) %>%
+  pull(unique_count)
+cat("--- Summary of Unique ACR-Gene Pairs ---\n")
+cat("Total unique pairs bound by EITHER TOX or TCF7:", count_either_tox_or_tcf7, "\n")
+verification_total <- count_only_tox + count_only_tcf7 + count_both_tox_tcf7
+cat("Verification by summing previous counts:", verification_total, "\n")
+
+binding_summary <- all_model_results_final %>%
+  mutate(bound_by_TOX = (TOX_Acute == 1),
+         bound_by_TCF7 = (TCF7_Acute == 1),
+         acr_gene = paste0(acr_id, "_x_", gene))
+count_both_tox_tcf7 <- binding_summary %>%
+  filter(bound_by_TOX & bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(paste0(acr_id))) %>%
+  pull(unique_acr_count)
+count_only_tox <- binding_summary %>%
+  filter(bound_by_TOX & !bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_id)) %>%
+  pull(unique_acr_count)
+count_only_tcf7 <- binding_summary %>%
+  filter(!bound_by_TOX & bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_id)) %>%
+  pull(unique_acr_count)
+cat("--- Summary of Unique ACRs Bound by TOX and TCF7 ---\n")
+cat("Total unique ACRs bound by BOTH TOX and TCF7:", count_both_tox_tcf7, "\n")
+cat("Total unique ACRs bound ONLY by TOX:", count_only_tox, "\n")
+cat("Total unique ACRs bound ONLY by TCF7:", count_only_tcf7, "\n")
+
+count_either_tox_or_tcf7 <- binding_summary %>%
+  filter(bound_by_TOX | bound_by_TCF7) %>%
+  summarise(unique_count = n_distinct(acr_id)) %>%
+  pull(unique_count)
+cat("--- Summary of Unique ACR-Gene Pairs ---\n")
+cat("Total unique pairs bound by EITHER TOX or TCF7:", count_either_tox_or_tcf7, "\n")
+verification_total <- count_only_tox + count_only_tcf7 + count_both_tox_tcf7
+cat("Verification by summing previous counts:", verification_total, "\n")
+
+acr_annot <- fread(file.path(bulk_atac_dir, "all_acrs_HOMER_annotated.txt")) %>%
+  rename_with(~ gsub(" ", "_", .)) %>%
+  mutate(acr_id = paste0(Chr, "_", Start, "_", End)) %>%
+  select(acr_id, Chr, Start, End) %>%
+  distinct()
+all_acrs_gr <- makeGRangesFromDataFrame(acr_annot,
+                                        seqnames.field = "Chr",
+                                        start.field = "Start",
+                                        end.field = "End")
+
+tf_groups <- c("TOX_Acute", "TCF7_Acute")
+tf_peaks_gr_list <- lapply(tf_groups, function(tf) {
+  peaks_df <- annot %>%
+    filter(group == tf) %>%
+    tidyr::separate(peak_id, into = c("chr", "start", "end"), sep = "[_:-]", convert = TRUE)
+  makeGRangesFromDataFrame(peaks_df, keep.extra.columns = TRUE)
+})
+names(tf_peaks_gr_list) <- tf_groups
+
+enhancer_acrs_df <- binding_summary %>%
+  distinct(acr_id, .keep_all = TRUE) %>%
+  filter(bound_by_TCF7 == TRUE)
+enhancer_acrs_df <- enhancer_acrs_df %>%
+  separate(acr_id, into = c("chr", "start", "end"), sep = "_", convert = TRUE)
+enhancer_acrs_gr <- makeGRangesFromDataFrame(
+  enhancer_acrs_df,
+  seqnames.field = "chr",
+  start.field = "start",
+  end.field = "end",
+  keep.extra.columns = TRUE
+)
+length(enhancer_acrs_gr)
+
+plan(multisession, workers = 10)
+n_perm <- 1000
+results <- future_lapply(tf_groups, function(tf) {
+  message(paste("Running permutation test for:", tf))
+  tf_gr <- tf_peaks_gr_list[[tf]]
+  summits <- resize(tf_gr, width = 1, fix = "center")
+  pt <- overlapPermTest(
+    A = summits,
+    B = enhancer_acrs_gr,
+    genome = "hg38",
+    universe = all_acrs_gr,
+    ntimes = n_perm,
+    alternative = "greater",
+    rand.func = randomizeRegions,
+    rand.args = list(
+      allow.overlaps = TRUE,
+      per.chromosome = TRUE,
+      mask = NULL
+    ),
+    verbose = TRUE
+  )
+  data.frame(
+    TF = tf,
+    observed_overlaps = pt$numOverlaps$observed,
+    permuted_mean     = mean(pt$numOverlaps$permuted),
+    z_score           = pt$numOverlaps$zscore,
+    p_value           = pt$numOverlaps$pval
+  )
+})
+results_df <- bind_rows(results)
+print(results_df)
+
+mcols(enhancer_acrs_gr)$acr_gene <- enhancer_acrs_df$acr_gene
+tox_hits <- findOverlaps(tf_peaks_gr_list[["TOX_Acute"]], enhancer_acrs_gr)
+tcf7_hits <- findOverlaps(tf_peaks_gr_list[["TCF7_Acute"]], enhancer_acrs_gr)
+tox_enhancer_acr_genes <- unique(mcols(enhancer_acrs_gr)$acr_gene[subjectHits(tox_hits)])
+tcf7_enhancer_acr_genes <- unique(mcols(enhancer_acrs_gr)$acr_gene[subjectHits(tcf7_hits)])
+length(tox_enhancer_acr_genes)
+length(tcf7_enhancer_acr_genes)
+tox_bound <- tox_enhancer_acr_genes
+tcf7_bound <- tcf7_enhancer_acr_genes
+tox_set <- unique(tox_bound)
+tcf7_set <- unique(tcf7_bound)
+both_bound <- intersect(tox_set, tcf7_set)
+tox_only   <- setdiff(tox_set, both_bound)
+tcf7_only  <- setdiff(tcf7_set, both_bound)
+
+k_tox_total <- length(tox_set)
+m_tcf7_total <- length(tcf7_set)
+x_both <- length(both_bound)
+total_enhancers <- length(enhancer_acrs_gr)
+
+a <- x_both
+b <- k_tox_total - x_both
+c <- m_tcf7_total - x_both
+d <- total_enhancers - (a + b + c)
+contingency_matrix <- matrix(c(a, c, b, d), nrow = 2)
+fisher_result <- fisher.test(contingency_matrix, alternative = "greater")
+
+colnames(contingency_matrix) <- c("TCF7_Bound", "Not_TCF7_Bound")
+rownames(contingency_matrix) <- c("TOX_Bound", "Not_TOX_Bound")
+print("Contingency Table:")
+print(contingency_matrix)
+print(fisher_result)
+cat("\n--- Set Counts ---\n")
+cat("TOX only:", length(tox_only), "\n")
+cat("TCF7 only:", length(tcf7_only), "\n")
+cat("Both (Intersection):", x_both, "\n")
+cat("Total bound by either (Union):", length(union(tox_set, tcf7_set)), "\n")
+cat("Total enhancers in background set (N):", total_enhancers, "\n")
