@@ -291,6 +291,22 @@ results_final <- results_combined %>%
   filter(Cluster %in% c("exh", "nonexh"), abs(rho_p) > 0.15) %>% 
   mutate(Cluster = factor(Cluster, levels=c("nonexh", "exh")))
 
+# Remove pairs that have opposite direction of rho in exh and nonexh
+flip_pairs <- results_final %>%
+  filter(Cluster %in% c("nonexh", "exh")) %>%
+  group_by(TF, gene) %>%
+  summarise(
+    nonexh_rho = mean(rho_p[Cluster == "nonexh"], na.rm = TRUE),
+    exh_rho    = mean(rho_p[Cluster == "exh"], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(sign(nonexh_rho) != sign(exh_rho)) %>%
+  select(TF, gene)
+
+results_final <- results_final %>%
+  anti_join(flip_pairs, by = c("TF", "gene"))
+
+
 # Create positive and negative regulon lists.
 tf_gene_lists <- results_final %>%
   group_by(TF) %>%
