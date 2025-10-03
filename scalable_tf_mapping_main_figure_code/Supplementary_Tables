@@ -1,0 +1,434 @@
+#==================================================================================================
+# R SCRIPT FOR FIGURE 6 - SUPPLEMENTARY TABLES
+# DATE: October 03, 2025
+#
+# DESCRIPTION:
+# This script generates several supplementary tables for the Figure 6 analysis. The process includes:
+# 1.  Aggregating HOMER-annotated peak data from multiple experiments (Supplementary Table 1).
+# 2.  Processing a public enhancer-gene link database (Supplementary Table 2).
+# 3.  Integrating TF binding, enhancer/promoter links, and expression data to perform
+#     linear regression and correlation analysis on peak-gene pairs (Supplementary Table 3).
+# 4.  Defining TF-gene regulons using proportionality analysis (rho) on single-cell data
+#     (Supplementary Tables 4 & 5).
+# 5.  Formatting and exporting NMF gene programs and TF binding proportions
+#     (Supplementary Tables 6 & 7).
+#==================================================================================================
+
+# --- 1. LOAD REQUIRED LIBRARIES ---
+# Suppress package startup messages for a cleaner console output.
+suppressPackageStartupMessages({
+  # Core data manipulation and reading
+  library(data.table)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(tibble)
+
+  # Visualization
+  library(ggplot2)
+  library(ComplexHeatmap)
+  library(circlize)
+  library(grid)
+  
+  # Genomics and annotation
+  library(GenomicRanges)
+  library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+  library(org.Hs.eg.db)
+  library(AnnotationDbi)
+
+  # Parallel processing
+  library(future)
+  library(future.apply)
+  library(progressr)
+  
+  # Fast object saving/loading
+  library(qs)
+})
+
+# --- 2. DEFINE GENERALIZABLE FILE PATHS ---
+# Define base directories for portability. All other paths are relative to these.
+# !! IMPORTANT !!: Update these paths to the root of the project directories.
+base_dir_acute_chronic <- "/path/to/your/acute_chronic/project_directory"
+base_dir_TFlex <- "/path/to/your/TFlex/project_directory"
+base_dir_engreitz <- "/path/to/your/engreitz_db/directory"
+base_dir_huardb <- "/path/to/your/huardb_analysis/directory"
+output_dir <- "/path/to/your/output_directory" # A single directory for all outputs
+
+# Construct specific input and output file paths.
+supplementary_tables_dir <- file.path(output_dir, "Supplementary_Tables")
+dir.create(supplementary_tables_dir, recursive = TRUE, showWarnings = FALSE)
+
+# --- Supplementary Table 1 Inputs ---
+annot_ac_file <- file.path(base_dir_acute_chronic, "STEP_4_output_deseq2_peak_analysis_ACUTE_ONLY/HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
+annot_ch_file <- file.path(base_dir_acute_chronic, "STEP_4_output_deseq2_peak_analysis_CHRONIC_ONLY/HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
+annot_bzip_file <- file.path(base_dir_TFlex, "full_dataset_without_pool2/STEP_4_output_deseq2_peak_analysis/HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
+
+# --- Supplementary Table 2 Inputs ---
+engreitz_input_file <- file.path(base_dir_engreitz, "CD8_T_Cell_ENCODE_rE2G_predictions_Engreitz_Lab.rds")
+
+# --- Supplementary Table 3 Inputs ---
+engreitz_distinct_pairs_file <- file.path(base_dir_engreitz, "distinct_gene_pairs_unmerged_final.csv")
+mae_paired_file <- file.path(base_dir_acute_chronic, "STEP_4_output_deseq2_peak_analysis_ACUTE_ONLY/wherry_bulk_atac_analysis/wherry_data_paired_rna_atac_multi_assay_experiment.rds")
+all_acrs_file <- file.path(base_dir_acute_chronic, "STEP_4_output_deseq2_peak_analysis_ACUTE_ONLY/wherry_bulk_atac_analysis/all_acrs_HOMER_annotated.txt")
+
+# --- Supplementary Table 4 & 5 Inputs ---
+metacell_file <- file.path(base_dir_huardb, "huARdb_Full_NMF_Regulon_Analysis/huARdb_filtered_metacell_object_hdWGCNA_Function_MetacellsByGroups_k15_mincells50_maxshared5_sum_counts_groupbyCluster_names.rds")
+
+# --- Supplementary Table 6 & 7 Inputs ---
+nmf_genes_file <- file.path(base_dir_huardb, "huARdb_Full_NMF_Regulon_Analysis_v2/v2_NMF_pos_regulon_list_of_top_geneshuARdb_full.rds")
+prop_bound_file <- file.path(base_dir_huardb, "huARdb_Full_NMF_Regulon_Analysis_v2/proportion_genes_bound_by_each_tf_in_v2_NMF.csv")
+
+
+#==================================================================================================
+# Supplementary Table 1 - All HOMER Annotated Peaks
+#==================================================================================================
+# Load peak annotation files from three different experimental sets.
+annot_ac <- read.csv(annot_ac_file) %>% mutate(method = "standard_CCs")
+annot_ch <- read.csv(annot_ch_file) %>% mutate(method = "standard_CCs")
+annot_bzip <- read.csv(annot_bzip_file) %>% mutate(method = "TFlex")
+
+# Combine all peak sets into a single data frame.
+all_annot_peaks <- rbind(annot_ac, annot_ch, annot_bzip)
+
+# Clean and rename columns for clarity in the final table.
+all_annot_peaks <- all_annot_peaks %>%
+  select(-baseMean, -lfcSE, -stat, -pvalue, -padj) %>%
+  rename(
+    norm_tf_srt_insertion_counts = norm_group_counts,
+    norm_unfused_hypbase_srt_insertion_counts = norm_comparator_counts,
+    log2FoldChange_tf_over_hypbase_srt_insertion_counts = log2FoldChange
+  ) %>%
+  mutate(annotation_method = "HOMER_annotatePeaks")
+
+# Save the combined and cleaned data to a CSV file.
+write.csv(all_annot_peaks, file = file.path(supplementary_tables_dir, "Supplementary_Table_1.csv"), row.names = FALSE)
+
+
+#==================================================================================================
+# Supplementary Table 2 - Enhancer Database Processing
+#==================================================================================================
+# Define the score threshold for filtering enhancer-gene links.
+SCORE_THRESHOLD <- 0
+
+# Read the list of data.tables from the Engreitz lab RDS file.
+e2g_list <- readRDS(engreitz_input_file)
+
+# Process each data.table to filter, format, and extract relevant information.
+e2g_processed_list <- lapply(e2g_list, function(dt) {
+  dt_sub <- dt[V8 > SCORE_THRESHOLD]
+  if (nrow(dt_sub) == 0) return(NULL)
+  
+  dt_sub[, enh_name := paste0(V1, ":", V2, "-", V3)]
+  dt_sub[, donor := regmatches(Description, regexpr("(?<=Donor: )[A-Za-z0-9]+", Description, perl = TRUE))]
+  
+  return(dt_sub)
+})
+
+# Combine all processed data.tables into a single large table.
+e2g_combined <- rbindlist(Filter(Negate(is.null), e2g_processed_list), use.names = TRUE, fill = TRUE, idcol = "file_id")
+
+# Clean up and reorder columns for the final supplementary table.
+setnames(e2g_combined, "V7", "gene_name")
+setnames(e2g_combined, "enh_name", "enh_region")
+setnames(e2g_combined, "V8", "ENCODE-rE2G_Model_Score")
+e2g_combined[, gene_tss_window := paste0(V4, ":", V5, "-", V6)]
+e2g_combined[, c("V1","V2","V3","V4","V5","V6","V9","V10") := NULL]
+e2g_combined[, gene_name := sub("\\|.*", "", gene_name)]
+
+# Set the final column order.
+setcolorder(e2g_combined, c("gene_name", "enh_region", "gene_tss_window", "ENCODE-rE2G_Model_Score", "Accession", "file_id"))
+
+# Save the processed enhancer database.
+write.csv(e2g_combined, file = file.path(supplementary_tables_dir, "Supplementary_Table_2_processed_enhancer_database.csv"), row.names = FALSE)
+
+
+#==================================================================================================
+# Supplementary Table 3 - Enhancer-Gene Pairs with Modeling Results
+#==================================================================================================
+# Define parameters for promoter window.
+promoter_upstream <- 5000
+promoter_downstream <- 5000
+
+# Load necessary data: enhancer-gene database, all peak annotations, and expression data.
+dt <- fread(engreitz_distinct_pairs_file, nThread = 12) %>% distinct(enh_coord, chr, start, end, gene_name)
+annot <- all_annot_peaks # Use the combined peak data from Table 1.
+mae_paired <- readRDS(mae_paired_file)
+
+# Prepare RNA and ATAC matrices.
+se_rna <- mae_paired[["rna"]]; se_atac <- mae_paired[["atac"]]
+colnames(se_atac) <- mae_paired[["atac"]]$RNA_ID
+atac_mat <- assay(se_atac)
+rna_mat <- assay(se_rna)
+rownames(rna_mat) <- rowData(se_rna)$geneSymbol
+rna_mat <- rna_mat[!duplicated(rownames(rna_mat)), ]
+
+# Process Accessible Chromatin Region (ACR) annotations.
+acr_annot <- fread(all_acrs_file) %>%
+  rename_with(~ gsub(" ", "_", .)) %>%
+  dplyr::mutate(acr_id = paste0(Chr, "_", Start, "_", End)) %>%
+  dplyr::select(acr_id, Chr, Start, End) %>% distinct()
+
+# Function to find overlaps between TF peaks and the universe of ACRs.
+get_universe_overlaps <- function(tf_peak_df, universe_gr, maxgap = 0) {
+  if (nrow(tf_peak_df) == 0) return(character(0))
+  tf_gr <- tf_peak_df %>%
+    separate(peak_id, into = c("chr", "start", "end"), sep = "[_:-]", convert = TRUE, fill = "right") %>%
+    filter(!is.na(chr) & !is.na(start) & !is.na(end)) %>%
+    makeGRangesFromDataFrame()
+  hits <- findOverlaps(tf_gr, universe_gr, maxgap = maxgap)
+  unique(mcols(universe_gr)$peak_id[subjectHits(hits)])
+}
+
+# Create a GRanges object of all ACRs.
+all_acrs_gr <- acr_annot %>%
+  mutate(peak_id = acr_id) %>%
+  dplyr::rename(chr = Chr, start = Start, end = End) %>%
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+# Identify all unique ACRs that are bound by any of the TFs.
+tf_groups <- unique(annot$group)
+tf_bound_acrs_list <- lapply(tf_groups, function(tf) {
+  get_universe_overlaps(annot %>% filter(group == tf), all_acrs_gr)
+})
+tf_bound_acrs <- unique(unlist(tf_bound_acrs_list))
+all_acrs_gr <- all_acrs_gr[mcols(all_acrs_gr)$peak_id %in% tf_bound_acrs]
+
+# Prepare gene annotations.
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene; genes_gr <- genes(txdb)
+gene_map <- AnnotationDbi::select(org.Hs.eg.db, keys = genes_gr$gene_id, columns = "SYMBOL", keytype = "ENTREZID")
+mcols(genes_gr)$gene_symbol <- gene_map$SYMBOL[match(genes_gr$gene_id, gene_map$ENTREZID)]
+genes_gr <- genes_gr[!is.na(mcols(genes_gr)$gene_symbol) & mcols(genes_gr)$gene_symbol %in% rownames(rna_mat)]
+
+# Identify peak-gene pairs based on promoter overlap.
+promoter_windows <- promoters(genes_gr, upstream = promoter_upstream, downstream = promoter_downstream)
+promoter_hits <- findOverlaps(all_acrs_gr, promoter_windows)
+promoter_pairs <- data.frame(acr_id = mcols(all_acrs_gr)$peak_id[queryHits(promoter_hits)],
+                             gene_name = mcols(promoter_windows)$gene_symbol[subjectHits(promoter_hits)]) %>% distinct()
+
+# Identify peak-gene pairs based on enhancer database overlap.
+enhancer_db_gr <- makeGRangesFromDataFrame(dt, seqnames.field = "chr", start.field = "start", end.field = "end", keep.extra.columns = TRUE)
+enhancer_hits <- findOverlaps(all_acrs_gr, enhancer_db_gr)
+enhancer_pairs <- data.frame(acr_id = mcols(all_acrs_gr)$peak_id[queryHits(enhancer_hits)],
+                             gene_name = mcols(enhancer_db_gr)$gene_name[subjectHits(enhancer_hits)]) %>% distinct()
+
+# Combine all candidate pairs and annotate with TF binding information.
+all_candidate_pairs <- bind_rows(promoter_pairs, enhancer_pairs) %>% distinct(acr_id, gene_name)
+tf_binding_info <- tibble(acr_id = tf_bound_acrs)
+for (tf in tf_groups) {
+  tf_binding_info[[tf]] <- as.integer(tf_bound_acrs %in% tf_bound_acrs_list[[which(tf_groups == tf)]])
+}
+acr_gene_pairs_for_modeling <- all_candidate_pairs %>%
+  mutate(is_promoter = (paste(acr_id, gene_name) %in% paste(promoter_pairs$acr_id, promoter_pairs$gene_name)),
+         is_enhancer = (paste(acr_id, gene_name) %in% paste(enhancer_pairs$acr_id, enhancer_pairs$gene_name))) %>%
+  left_join(tf_binding_info, by = "acr_id") %>%
+  filter(gene_name %in% rownames(rna_mat))
+
+# --- Perform Linear Regression and Correlation in Parallel ---
+# Filter matrices to only include data for candidate pairs.
+paired_acrs <- unique(acr_gene_pairs_for_modeling$acr_id); paired_genes <- unique(acr_gene_pairs_for_modeling$gene_name)
+rna_mat_filter <- rna_mat[paired_genes, , drop = FALSE]; atac_mat_filter <- atac_mat[paired_acrs, , drop = FALSE]
+common_samps <- intersect(colnames(rna_mat_filter), colnames(atac_mat_filter))
+rna_mat_filter <- rna_mat_filter[, common_samps, drop = FALSE]; atac_mat_filter <- atac_mat_filter[, common_samps, drop = FALSE]
+
+# Set up parallel processing environment.
+plan(multisession, workers = 10)
+handlers(global = TRUE); handlers("progress")
+
+# Process in batches to manage memory.
+batch_size <- 10000; n_pairs <- nrow(acr_gene_pairs_for_modeling); n_batches <- ceiling(n_pairs / batch_size)
+all_model_results <- list()
+
+with_progress({
+  p_overall <- progressor(along = 1:n_batches)
+  for (batch_i in 1:n_batches) {
+    start_idx <- (batch_i - 1) * batch_size + 1; end_idx <- min(batch_i * batch_size, n_pairs)
+    batch_pairs <- acr_gene_pairs_for_modeling[start_idx:end_idx, ]
+    
+    batch_results <- future_lapply(1:nrow(batch_pairs), function(i) {
+      pair <- batch_pairs[i, ]; gene <- pair$gene_name; acr <- pair$acr_id
+      if (!(gene %in% rownames(rna_mat_filter)) || !(acr %in% rownames(atac_mat_filter))) return(NULL)
+      
+      expr_vec <- as.numeric(rna_mat_filter[gene, ]); peak_vec <- as.numeric(atac_mat_filter[acr, ])
+      fit <- tryCatch(lm(gene_expression ~ peak_accessibility, data = data.frame(gene_expression = expr_vec, peak_accessibility = peak_vec)), error = function(e) NULL)
+      if (is.null(fit)) return(NULL)
+      
+      model_info <- broom::glance(fit)
+      tidy_coef <- broom::tidy(fit) %>%
+        filter(term == "peak_accessibility") %>%
+        transmute(gene = gene, acr_id = acr, beta = estimate, p_value = p.value, r_squared = model_info$r.squared)
+      
+      cor_test <- suppressWarnings(cor.test(expr_vec, peak_vec, method = "spearman"))
+      tidy_coef$spearman_rho <- cor_test$estimate; tidy_coef$spearman_p <- cor_test$p.value
+      
+      return(tidy_coef)
+    }, future.seed = TRUE)
+    
+    all_model_results[[batch_i]] <- do.call(rbind, Filter(Negate(is.null), batch_results))
+    p_overall(sprintf("Completed batch %d/%d", batch_i, n_batches)); gc()
+  }
+})
+plan(sequential)
+
+# Collect, process, and annotate modeling results.
+all_model_results_merged <- dplyr::bind_rows(all_model_results) %>%
+  group_by(gene) %>%
+  dplyr::mutate(fdr_lm = p.adjust(p_value, method = "BH"), fdr_spearman = p.adjust(spearman_p, method = "BH")) %>%
+  ungroup() %>%
+  select(gene, acr_id, r_squared, beta, fdr_lm, spearman_rho, fdr_spearman)
+final_annotated_results <- all_model_results_merged %>%
+  left_join(acr_gene_pairs_for_modeling, by = c("gene" = "gene_name", "acr_id" = "acr_id")) %>%
+  mutate(annotation = case_when(is_promoter & is_enhancer ~ "Promoter_Enhancer",
+                                is_promoter & !is_enhancer ~ "Promoter",
+                                !is_promoter & is_enhancer ~ "Enhancer", TRUE ~ "Other"))
+
+# Add back genes with TF binding in their promoter but not found through ACR pairing.
+new_rows_list <- list()
+promoter_1kb_gr <- promoters(genes_gr, upstream = 1000, downstream = 1000)
+for (tf in tf_groups) {
+  tf_peak_df <- annot %>% filter(group == tf)
+  if (nrow(tf_peak_df) == 0) next
+  tf_gr <- makeGRangesFromDataFrame(tf_peak_df %>% separate(peak_id, into = c("chr", "start", "end"), sep = "[_:-]", convert = TRUE) %>% filter(!is.na(chr)))
+  hits <- findOverlaps(tf_gr, promoter_1kb_gr)
+  if (length(hits) == 0) next
+  promoter_bound_genes <- unique(mcols(promoter_1kb_gr)$gene_symbol[subjectHits(hits)])
+  if (length(promoter_bound_genes) > 0) {
+    new_df <- tibble(gene = promoter_bound_genes, acr_id = NA_character_, annotation = "non_acr_promoter")
+    new_df[[tf]] <- 1
+    new_rows_list[[tf]] <- new_df
+  }
+}
+final_new_rows <- bind_rows(new_rows_list) %>%
+  group_by(gene, acr_id, annotation) %>%
+  summarise(across(all_of(tf_groups), ~sum(., na.rm = TRUE)), .groups = "drop")
+
+# Combine all results and clean up column names for the final table.
+final_annotated_results_final <- bind_rows(final_annotated_results, final_new_rows) %>%
+  rename(bulk_peripheral_cd8_atac_peak = acr_id,
+         r_squared_simple_linear_regression = r_squared,
+         beta_simple_linear_regression = beta,
+         fdr_simple_linear_regression = fdr_lm,
+         spearman_fdr = fdr_spearman) %>%
+  mutate(annotation = case_when(
+    annotation == "Enhancer" ~ "ENCODE-rE2G_enhancer_region",
+    annotation == "Promoter_Enhancer" ~ "ENCODE-rE2G_enhancer_region_within_5kb_of_tss",
+    annotation == "Promoter" ~ "within_5kb_of_tss_non_enhancer",
+    annotation == "non_acr_promoter" ~ "TF_bind_site_within_1kb_of_tss_no_atac_peak_non_enhancer",
+    TRUE ~ annotation
+  )) %>%
+  select(-is_promoter, -is_enhancer) %>%
+  mutate(enhancer_region_atac_peak_x_gene_pair = paste0(bulk_peripheral_cd8_atac_peak, "_x_", gene)) %>%
+  select(enhancer_region_atac_peak_x_gene_pair, annotation, everything())
+
+# Save the final results.
+write.csv(final_annotated_results_final, file = file.path(supplementary_tables_dir, "Supplementary_Table_3.csv"), row.names = FALSE)
+
+
+#==================================================================================================
+# Supplementary Tables 4 & 5 - TF-Target Association (Regulons)
+#==================================================================================================
+# Load the pre-computed metacell object.
+metacell <- qread(metacell_file)
+
+# Filter the modeling results to define high-confidence dynamic pairs.
+all_model_results_final <- final_annotated_results_final %>%
+  filter((!is.na(fdr_simple_linear_regression) & fdr_simple_linear_regression < 0.05 & 
+          !is.na(spearman_fdr) & spearman_fdr < 0.05 & 
+          !is.na(beta_simple_linear_regression) & beta_simple_linear_regression > 0.15 & 
+          !is.na(r_squared_simple_linear_regression) & r_squared_simple_linear_regression > 0.15) |
+         annotation == "TF_bind_site_within_1kb_of_tss_no_atac_peak_non_enhancer")
+
+# Create lists of target genes for each TF.
+tf_cols <- c(grep("_Acute$|_Chronic$", colnames(all_model_results_final), value = TRUE), "BATF", "JUN", "FOSL1")
+tf_gene_lists <- list()
+for (tf_column_name in tf_cols) {
+  new_list_name <- sub("_Acute|_Chronic", "", tf_column_name)
+  genes <- unique(all_model_results_final$gene[all_model_results_final[[tf_column_name]] == 1])
+  genes <- genes[!grepl("^RPS|^RPL", genes)]
+  tf_gene_lists[[new_list_name]] <- unique(c(tf_gene_lists[[new_list_name]], genes))
+}
+tf_gene_pairs_for_modeling <- bind_rows(lapply(names(tf_gene_lists), function(tf) {
+  data.frame(TF = tf, gene = tf_gene_lists[[tf]], stringsAsFactors = FALSE)
+})) %>% filter(TF %in% rownames(metacell) & gene %in% rownames(metacell)) %>% distinct(TF, gene)
+
+# Prepare metacell data for proportionality analysis.
+metacell <- NormalizeData(metacell, normalization.method = "CLR")
+nonexh_clusters <- c("Tn", "Early Tcm/Tem", "Tcm", "GZMK+ Tem", "GNLY+ Temra", "CMC1+ Temra", "ZNF683+ Teff", "MAIT", "ILTCK", "MACF1+ T", "CREM+ Trm", "ITGB2+ Trm", "ITGAE+ Trm")
+exh_clusters <- c("Tpex", "GZMK+ Tex", "XBP1+ Tex", "ITGAE+ Tex", "Cycling T")
+metacell$broadest_cluster <- ifelse(metacell$broad_clusters %in% nonexh_clusters, "nonexh",
+                                    ifelse(metacell$broad_clusters %in% exh_clusters, "exh", NA))
+needed_genes <- unique(c(tf_gene_pairs_for_modeling$TF, tf_gene_pairs_for_modeling$gene))
+needed_genes <- intersect(needed_genes, rownames(GetAssayData(metacell, slot = "data")))
+
+# Calculate proportionality (rho) within exhausted and non-exhausted subsets.
+results_broadest_clusters <- lapply(c("exh", "nonexh"), function(ct) {
+  cells_ct <- colnames(metacell)[metacell$broadest_cluster == ct & !is.na(metacell$broadest_cluster)]
+  expr_ct <- as.matrix(GetAssayData(metacell, slot = "data"))[needed_genes, cells_ct, drop = FALSE]
+  df <- compute_rho_p_with_pval_refactored(expr_override = expr_ct, pairs_df = tf_gene_pairs_for_modeling, ncores = 5, compute_pval = FALSE)
+  df$Cluster <- ct
+  return(df)
+})
+results_combined_final <- do.call(rbind, results_broadest_clusters)
+
+# Save the full rho results for Supplementary Table 4.
+results_full_df <- results_combined_final %>% 
+  mutate(Cluster = case_when(Cluster == "nonexh" ~ "memory_subsets_rho_p",
+                             Cluster == "exh" ~ "exhausted_subsets_rho_p",
+                             TRUE ~ Cluster)) %>%
+  select(-pvalue)
+write.csv(results_full_df, file = file.path(supplementary_tables_dir, "Supplementary_Table_4.csv"), row.names = FALSE)
+
+# Filter results and define final regulons.
+results_final <- results_combined_final %>% 
+  filter(abs(rho_p) > 0.15)
+flip_pairs <- results_final %>%
+  group_by(TF, gene) %>%
+  summarise(nonexh_rho = mean(rho_p[Cluster == "nonexh"], na.rm = TRUE),
+            exh_rho    = mean(rho_p[Cluster == "exh"], na.rm = TRUE), .groups = "drop") %>%
+  filter(sign(nonexh_rho) != sign(exh_rho)) %>% select(TF, gene)
+results_final <- results_final %>% anti_join(flip_pairs, by = c("TF", "gene"))
+
+# Create and format the regulon list for Supplementary Table 5.
+tf_gene_lists <- results_final %>%
+  group_by(TF) %>%
+  dplyr::summarise(pos_genes = list(unique(gene[rho_p > 0])),
+                   neg_genes = list(unique(gene[rho_p < 0])), .groups = "drop")
+regulon_list <- list()
+for(i in seq_len(nrow(tf_gene_lists))) {
+  tf_name <- tf_gene_lists$TF[i]
+  if(length(tf_gene_lists$pos_genes[[i]]) > 0) regulon_list[[paste0(tf_name, "_bound_and_positively_associated")]] <- tf_gene_lists$pos_genes[[i]]
+  if(length(tf_gene_lists$neg_genes[[i]]) > 0) regulon_list[[paste0(tf_name, "_bound_and_negatively_associated")]] <- tf_gene_lists$neg_genes[[i]]
+}
+max_len <- max(sapply(regulon_list, length))
+padded_list <- lapply(regulon_list, function(x) `length<-`(x, max_len))
+regulon_df <- as.data.frame(padded_list)
+write.csv(regulon_df, file = file.path(supplementary_tables_dir, "Supplementary_Table_5.csv"), row.names = FALSE, na = "")
+
+
+#==================================================================================================
+# Supplementary Tables 6 & 7 - NMF Program Genes and TF Binding Proportions
+#==================================================================================================
+# Load NMF program gene lists.
+nmf_loadings_file <- readRDS(nmf_genes_file)
+names(nmf_loadings_file) <- c("Exhaustion", "NFkB Signaling", "Acute Activation", "Cell Cycle", 
+                              "Terminal Effector", "Stemness", "Effector", "Membrane Remodeling", "Interferon Response")
+
+# Convert the list of gene programs to a wide data frame format.
+nmf_long <- bind_rows(lapply(names(nmf_loadings_file), function(prog) tibble(NMF_program = prog, gene = nmf_loadings_file[[prog]])))
+nmf_wide <- nmf_long %>%
+  group_by(NMF_program) %>%
+  mutate(row = row_number()) %>%
+  ungroup() %>%
+  pivot_wider(names_from = NMF_program, values_from = gene)
+
+# Reorder columns to a logical program order.
+prog_order <- c("Stemness", "Terminal Effector", "Effector", "Acute Activation", "NFkB Signaling",
+                "Exhaustion", "Interferon Response", "Cell Cycle", "Membrane Remodeling")
+nmf_wide <- nmf_wide[, prog_order]
+
+# Save the NMF program genes for Supplementary Table 6.
+write.csv(nmf_wide, file.path(supplementary_tables_dir, "Supplementary_Table_6_nmf_program_genes.csv"), row.names = FALSE, na = "")
+
+# Load and save the proportion of TF-bound genes within each NMF program for Supplementary Table 7.
+prop_genes_bound_nmf_file <- read.csv(prop_bound_file)
+write.csv(prop_genes_bound_nmf_file, file.path(supplementary_tables_dir, "Supplementary_Table_7_prop_tf_bound.csv"), row.names = FALSE)
+
