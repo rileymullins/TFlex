@@ -1,0 +1,245 @@
+#==================================================================================================
+# R SCRIPT FOR FIGURE 5 ANALYSIS
+# DATE: October 03, 2025
+#
+# DESCRIPTION:
+# This script analyzes and compares Self-Reporting Transposon (SRT) insertion count data
+# from standard versus barcoded (TFlex) methods. The analysis includes:
+# 1.  Processing and summarizing SRT insertion counts binned across the genome.
+# 2.  Generating a heatmap to visualize the distribution of insertion counts by percentile.
+# 3.  Calculating and plotting signal-to-noise ratios and maximum signal per sample.
+# 4.  Analyzing ChIP-seq peak data to visualize the proportion of TF-specific peaks.
+#==================================================================================================
+
+# --- 1. LOAD REQUIRED LIBRARIES ---
+# Suppress package startup messages for a cleaner console output.
+suppressPackageStartupMessages({
+  # Core data manipulation and reading
+  library(data.table)
+  library(dplyr)
+  
+  # Visualization
+  library(ggplot2)
+  library(ComplexHeatmap)
+  library(circlize)
+  library(grid)
+})
+
+# --- 2. DEFINE GENERALIZABLE FILE PATHS ---
+# Define a single base directory for portability. All other paths are relative to this.
+# !! IMPORTANT !!: Update this path to the root of the project directory.
+base_dir <- "/path/to/your/project/directory"
+
+# Construct input and output directories from the base path.
+data_dir <- file.path(base_dir, "DATA_DIR")       # Directory for input data
+fig_dir <- file.path(base_dir, "FIGS_DIR")        # Directory for figure output
+peak_dir <- file.path(base_dir, "PEAKS_DIR")      # Directory for peak analysis results
+
+# Create the figure directory if it does not already exist.
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Define full paths for all input and output files.
+binned_data_file <- file.path(data_dir, "combined_binned_200bp_all_samples.tsv")
+summary_stats_file <- file.path(data_dir, "summary_stats_by_sample.csv")
+percentile_heatmap_png <- file.path(fig_dir, "insertions_by_percentile_per_sample_heatmap.png")
+percentile_heatmap_pdf <- file.path(fig_dir, "insertions_by_percentile_per_sample_heatmap.pdf")
+signal_noise_vln_png <- file.path(fig_dir, "signal-to-noise_ratio_vln.png")
+signal_noise_vln_pdf <- file.path(fig_dir, "signal-to-noise_ratio_vln.pdf")
+max_signal_png <- file.path(fig_dir, "max_signal_per_sample.png")
+max_signal_pdf <- file.path(fig_dir, "max_signal_per_sample.pdf")
+all_sig_file <- file.path(peak_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
+specific_peaks_file <- file.path(peak_dir, "group_specific_peaks_summary.csv")
+output_peak_fig <- file.path(fig_dir, "Total_Peaks_per_Condition_Plot.png")
+output_peak_pdf <- file.path(fig_dir, "Total_Peaks_per_Condition_Plot.pdf")
+
+# --- 3. LOAD AND FILTER BINNED GENOMIC DATA ---
+# Read the binned insertion count data using data.table for efficiency.
+# The data is pre-filtered to remove chromosome 2 and specific anomalous bins.
+dt <- fread(binned_data_file, nThread = 10) %>%
+  arrange(desc(count)) %>%
+  filter(!chr %in% "chr2" & !bin_start %in% c("32916200", "32916400", "32916600"))
+
+# --- 4. CALCULATE SUMMARY STATISTICS PER SAMPLE ---
+# Calculate standard summary statistics (min, max, mean, quartiles) for the insertion counts in each sample.
+summary_stats <- dt[, as.list(summary(count)), by = sample]
+print("Summary statistics per sample:")
+print(summary_stats)
+# Optional: Save the summary statistics to a CSV file.
+# fwrite(summary_stats, file = summary_stats_file)
+
+# --- 5. PREPARE DATA FOR PERCENTILE HEATMAP ---
+# Define percentile intervals from 0% to 100% in 1% increments.
+percentile_intervals <- seq(0, 1, by = 0.01)
+
+# Calculate the insertion count value at each percentile for every sample.
+percentile_stats <- dt[, as.list(quantile(count, probs = percentile_intervals)), by = sample]
+
+# Order samples by their maximum insertion count (100th percentile) for better visualization.
+setorder(percentile_stats, -`100%`)
+
+# Convert the data into a matrix format suitable for the heatmap.
+heatmap_matrix <- as.matrix(percentile_stats[, -'sample'])
+rownames(heatmap_matrix) <- percentile_stats$sample
+
+# Log10-transform the data to compress the range of values and improve color mapping.
+log_heatmap_matrix <- log10(heatmap_matrix + 1)
+
+# --- 6. CONFIGURE HEATMAP AESTHETICS ---
+# Create custom column labels, showing only every 10th percentile to avoid clutter.
+col_names <- colnames(log_heatmap_matrix)
+keep_labels <- as.numeric(gsub("%", "", col_names)) %% 10 == 0
+display_col_names <- ifelse(keep_labels, col_names, "")
+
+# Create a custom non-linear color palette for the heatmap.
+data_range <- range(log_heatmap_matrix, na.rm = TRUE)
+color_breaks <- c(data_range[1],
+                  data_range[1] + (data_range[2] - data_range[1]) * 0.25,
+                  data_range[1] + (data_range[2] - data_range[1]) * 0.5,
+                  data_range[1] + (data_range[2] - data_range[1]) * 0.75,
+                  data_range[2])
+col_fun <- colorRamp2(breaks = color_breaks,
+                      colors = c("white", "#2488F0", "#7F3F98", "#E22929", "#FCB31A"))
+
+# Define row splits and annotations to distinguish between "Barcoded" and "Standard" methods.
+num_samples <- nrow(log_heatmap_matrix)
+barcoded_n <- 18 # Number of barcoded samples.
+row_split_groups <- c(rep("Barcoded", barcoded_n), rep("Standard", num_samples - barcoded_n))
+
+method_annotation <- rowAnnotation(
+  Method = row_split_groups,
+  col = list(Method = c("Barcoded" = "forestgreen", "Standard" = "navy")),
+  show_annotation_name = FALSE, border = TRUE,
+  simple_anno_size = unit(2.5, "mm")
+)
+
+# --- 7. DRAW AND SAVE PERCENTILE HEATMAP ---
+# Generate the heatmap using ComplexHeatmap.
+ht <- Heatmap(
+  matrix = log_heatmap_matrix,
+  name = "log10(count+1)",
+  col = col_fun,
+  cluster_rows = FALSE, # Maintain the pre-defined sample order.
+  cluster_columns = FALSE,
+  show_row_names = FALSE,
+  show_column_names = TRUE,
+  column_labels = display_col_names,
+  border = TRUE,
+  column_title = "Insertion Count Percentile",
+  column_title_side = "bottom",
+  column_title_gp = gpar(fontsize = 10, fontface="bold"),
+  row_split = row_split_groups, # Split rows by method.
+  right_annotation = method_annotation,
+  heatmap_legend_param = list(title = "log10 Insertion Count",
+                              title_gp = gpar(fontsize = 8, fontface="bold"),
+                              labels_gp = gpar(fontsize = 8))
+)
+
+# Save the heatmap to both PNG and PDF formats.
+png(percentile_heatmap_png, width = 4, height = 4, units = "in", res = 300)
+ComplexHeatmap::draw(ht, heatmap_legend_side = "right")
+dev.off()
+pdf(percentile_heatmap_pdf, width = 4, height = 4)
+ComplexHeatmap::draw(ht, heatmap_legend_side = "right")
+dev.off()
+
+# --- 8. CALCULATE AND PLOT SIGNAL-TO-NOISE RATIO ---
+# Calculate a signal-to-noise metric: mean of top 20% counts / mean of bottom 20% counts.
+summary_metrics <- dt[, list(
+  median_ratio = {
+    q_vals <- quantile(count, probs = c(0.2, 0.8))
+    top_mean <- mean(count[count >= q_vals[2]])
+    bottom_mean <- mean(count[count <= q_vals[1]])
+    top_mean / (bottom_mean + 1e-6) # Add small constant to avoid division by zero.
+  }
+), by = sample]
+
+# Add method group information for plotting.
+setorder(summary_metrics, -median_ratio)
+summary_metrics[, method_group := c(rep("Barcoded", barcoded_n), rep("Standard", .N - barcoded_n))]
+summary_metrics$method_group <- factor(summary_metrics$method_group, levels = c("Standard", "Barcoded"))
+
+# Generate a violin plot with jittered points to show the distribution of the ratio.
+p <- ggplot(summary_metrics, aes(x = method_group, y = median_ratio, fill = method_group, color = method_group)) +
+  geom_violin(trim = FALSE, alpha = 0.5, color = "black") +
+  geom_jitter(width = 0.1, size = 2, shape = 16, alpha = 0.8) +
+  scale_fill_manual(values = c("Barcoded" = "forestgreen", "Standard" = "navy")) +
+  scale_color_manual(values = c("Barcoded" = "forestgreen", "Standard" = "navy")) +
+  labs(x = "Method", y = "Top 20th / Bottom 20th Percentile\nMean Counts") +
+  theme_minimal(base_size = 10) +
+  theme(axis.title = element_text(color = "black", size = 11, face = "bold"),
+        axis.text = element_text(color = "black", size = 10),
+        axis.line = element_line(color = "black"),
+        panel.grid = element_blank(),
+        legend.position = "none")
+
+# Save the plot.
+ggsave(p, file = signal_noise_vln_png, width = 4, height = 4, bg = "white")
+ggsave(p, file = signal_noise_vln_pdf, width = 4, height = 4)
+
+# --- 9. CALCULATE AND PLOT MAXIMUM SIGNAL PER SAMPLE ---
+# Calculate the single highest insertion count for each sample.
+dt_max <- dt[, .(max_count = max(count)), by = sample]
+method_lookup <- setNames(c(rep("Barcoded", barcoded_n), rep("Standard", num_samples - barcoded_n)), unique(dt$sample))
+dt_max[, method_group := method_lookup[sample]]
+
+# Generate a jitter plot to compare the maximum signal between methods.
+p <- ggplot(dt_max, aes(x = method_group, y = max_count, color = method_group)) +
+  geom_jitter(width = 0.4, height = 0, alpha = 0.8, size = 2, shape = 16) +
+  geom_hline(yintercept = 112, linetype = "dashed", size = 0.5, color = "black") +
+  scale_color_manual(values = c("Standard" = "navy", "Barcoded" = "forestgreen")) +
+  labs(x = "Method", y = "Maximum Signal Detected per Sample", color = "Method") +
+  theme_minimal(base_size = 10) +
+  theme(axis.title = element_text(color = "black", size = 11, face = "bold"),
+        axis.text = element_text(color = "black", size = 10),
+        axis.line = element_line(color = "black"),
+        panel.grid = element_blank(),
+        legend.position = "none") +
+  ylim(0, 1200)
+
+# Save the plot.
+ggsave(p, file = max_signal_png, width = 4, height = 4, bg = "white", dpi = 300)
+ggsave(p, file = max_signal_pdf, width = 4, height = 4, bg = "white")
+
+# --- 10. ANALYZE AND PLOT PEAK SPECIFICITY ---
+# Load significant peak annotations and a summary of group-specific peaks.
+all_sig <- read.csv(all_sig_file)
+specific_peaks <- read.csv(specific_peaks_file)
+
+# Define the desired order for TF groups on the plot.
+group_order_plots <- c("JUN", "FOSL1", "BATF", "JUN.FOS.BATF", "FOSL1.BATF.MAFA",
+                       "BATF3.BATF2.MAFF", "BATF3.JDP2.BATF2", "MAFF.ATF3.BATF2")
+
+# Merge data and flag peaks that are specific to their called group.
+merged_df <- all_sig %>%
+  left_join(specific_peaks %>% select(peak_id, specific_for_group), by = "peak_id") %>%
+  mutate(
+    specific_flag = ifelse(!is.na(specific_for_group) & group == specific_for_group, "True", "False"),
+    group = factor(group, levels = group_order_plots)
+  )
+
+# Count the number of specific vs. non-specific ("False") peaks per group.
+counts_specific <- merged_df %>%
+  count(group, specific_flag, name = "num_peaks") %>%
+  mutate(specific_flag = factor(specific_flag, levels = c("True", "False")))
+
+# Generate a stacked bar plot showing the proportion of specific peaks.
+p <- ggplot(counts_specific, aes(x = group, y = num_peaks, fill = specific_flag)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.25, width = 0.5) +
+  scale_fill_manual(values = c("True" = "navy", "False" = "grey90")) +
+  labs(x = NULL, y = "Peak Count", fill = "Specific to TF") +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title.y = element_text(face = "bold"),
+    axis.text = element_text(face = "bold", color = "black"),
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.line = element_line(color = "black", size = 0.5),
+    axis.ticks = element_line(color = "black"),
+    panel.grid = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank()
+  ) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 15000))
+
+# Save the final plot.
+ggsave(file = output_peak_fig, plot = p, width = 5, height = 2.5, bg = "white", dpi = 300)
+ggsave(file = output_peak_pdf, plot = p, width = 5, height = 2.5)
