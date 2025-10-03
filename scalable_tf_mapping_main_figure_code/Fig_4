@@ -1,1 +1,601 @@
 
+# Figure 4 analysis: Generalizable, annotated, executable R code
+
+# ---------- Directories ----------
+python_output_dir <- "YOUR_DATA_DIR"  # Set your root data directory here
+output_dir <- file.path(python_output_dir, "STEP_4_output_deseq2_peak_analysis_ACUTE_ONLY")
+bulk_rna_dir <- file.path(output_dir, "wherry_bulk_rna_seq_analysis")
+bulk_atac_dir <- file.path(output_dir, "wherry_bulk_atac_analysis")
+bzip_results_outdir <- file.path(bulk_atac_dir, "bZIP_combined_linear_regression")
+dir.create(bzip_results_outdir, recursive = TRUE, showWarnings = FALSE)
+
+# ---------- Load TF-gene model results ----------
+figdir <- "YOUR_FIGS_DIR" # Set your figures directory here
+all_model_results_final <- read.csv(file.path(figdir,"with_promoter_genes_added_back_ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+
+# ---------- Load and prepare huARdb metadata ----------
+metadata <- read.csv("YOUR_METADATA_DIR/huARdb_CD8_metadata.csv")
+rownames(metadata) <- metadata$X
+metadata$X <- NULL
+metadata$barcode <- rownames(metadata)
+metadata$clone_id <- paste0(
+  metadata$IR_VDJ_1_v_call, "_", 
+  metadata$IR_VDJ_1_j_call, "_", 
+  metadata$IR_VDJ_1_junction_aa, "_", 
+  metadata$IR_VJ_1_v_call, "_", 
+  metadata$IR_VJ_1_j_call, "_", 
+  metadata$IR_VJ_1_junction_aa
+)
+texmd <- read.csv("YOUR_METADATA_DIR/huardb_Tex_subcluster_metadata.csv")
+rownames(texmd) <- texmd$X
+texmd$X <- NULL
+texmd$barcode <- rownames(texmd)
+metadata <- dplyr::left_join(metadata, texmd, by = intersect(colnames(metadata), colnames(texmd)))
+rownames(metadata) <- metadata$barcode
+
+# ---------- Filter metadata ----------
+tissues_of_interest <- c("PBMC", "TIL", "Lymph Node")
+disease_type_of_interset <- c("Healthy","Solid tumor")
+subsets <- setdiff(unique(metadata$cell_subset), c("ag_spcific"))
+metadata <- metadata %>% 
+  dplyr::filter(disease_type %in% disease_type_of_interset &
+                meta_tissue_type %in% tissues_of_interest &
+                cell_subset %in% subsets)
+metadata$cell_subtype_4 <- ifelse(is.na(metadata$cell_subtype_4), metadata$cell_subtype_3, metadata$cell_subtype_4)
+metadata$Cluster_names <- metadata$cell_subtype_4
+
+# ---------- Load single-cell count data and create Seurat object ----------
+library(Seurat)
+library(tidyverse)
+library(cowplot)
+library(patchwork)
+library(WGCNA)
+library(hdWGCNA)
+allowWGCNAThreads(nThreads = 12)
+db <- CreateSeuratObject(
+  counts = Read10X(file.path(bulk_rna_dir, "huARdb_CD8_T_cell_atlas_Healthy_SolidTumor_PBMC_TIL_ParatumorTissue_NormalTissue_LymphNode_min_ftr_per_cell_500_min_cells_per_gene_20_pct_mt_10"))
+)
+cells_to_keep <- intersect(metadata$barcode, colnames(db))
+db <- subset(db, cells = cells_to_keep)
+db[["percent.mt"]] <- PercentageFeatureSet(object = db, pattern = "^MT-")
+db <- AddMetaData(db, metadata = metadata)
+db <- subset(db, subset = (percent.mt <= 7.5))
+db <- CreateSeuratObject(
+  counts = GetAssayData(db,assay="RNA",layer="counts"),
+  assay = "RNA",
+  meta.data = db@meta.data
+)
+DefaultAssay(db) <- "RNA"
+
+# ---------- Add UMAP reductions ----------
+umaptex <- read.csv("YOUR_METADATA_DIR/huardb_Tex_subcluster_umap.csv")
+umaptex <- umaptex %>% filter(X %in% colnames(db))
+rownames(umaptex) <- umaptex$X
+umaptex$X <- NULL
+db[["umaptex"]] <- CreateDimReducObject(embeddings = as.matrix(umaptex), key = "UMAPtex_")
+umap <- read.csv("YOUR_METADATA_DIR/huARdb_CD8_umap.csv")
+umap <- umap %>% filter(X %in% colnames(db))
+rownames(umap) <- umap$X
+umap$X <- NULL
+db[["umap"]] <- CreateDimReducObject(embeddings = as.matrix(umap), key = "UMAP_")
+
+# ---------- Set cluster identities ----------
+full_levels <- c(
+  "Tn", "Early Tcm/Tem", "Tcm", "GZMK+ Tem", "GNLY+ Temra", "CMC1+ Temra", 
+  "ZNF683+ Teff", "MAIT", "ILTCK", "MACF1+ T", "CREM+ Trm", "ITGB2+ Trm", 
+  "ITGAE+ Trm", "Tpex", "GZMK+ Tex", "XBP1+ Tex", "ITGAE+ Tex", "S100A11+ Tex", 
+  "GZMK+ Tex ISG+", "ITGAE+ Tex IL7R+", "ITGAE+ Tex ISG+", "GZMK+ Tex IL7R+", 
+  "GZMK+ Tex TNFRSF9+", "ITGAE+ Tex DUSP1+", "GZMK+ Tex DUSP1+", "Cycling T"
+)
+tex_levels <- intersect(full_levels, unique(db$cell_subtype_4))
+db$cell_subtype_4 <- factor(db$cell_subtype_4, levels = tex_levels)
+Idents(db) <- db$cell_subtype_4
+broad_levels <- intersect(full_levels, unique(db$cell_subtype_3))
+db$cell_subtype_3 <- factor(db$cell_subtype_3, levels = broad_levels)
+Idents(db) <- db$cell_subtype_3
+cluster_levels <- intersect(full_levels, unique(db$Cluster_names))
+db$Cluster_names <- factor(db$Cluster_names, levels = cluster_levels)
+Idents(db) <- db$Cluster_names
+
+# ---------- Load saved object if needed ----------
+# db <- qread(file.path(figdir,"huARdb_Full_scRNA_mt7.5_full_and_tex_subclustering_umap_and_metadata.rds"))
+
+# ---------- Metacell creation ----------
+db@misc[["active_wgcna"]] <- NULL 
+db@misc[["metacell"]] <- NULL
+gc()
+db <- SetupForWGCNA(db, wgcna_name = "metacell", features = "TOX")
+db@assays$RNA$data <- NULL
+rm(metadata,texmd,umap)
+gc()
+db <- MetacellsByGroups(
+  db,
+  group.by = c("Cluster_names"),
+  ident.group = "Cluster_names",
+  k = 15,
+  reduction = "umap",
+  assay = "RNA",
+  slot = "counts",
+  layer = "counts",
+  mode = "sum",
+  min_cells = 50,
+  max_shared = 5,
+  target_metacells = 1000000,
+  max_iter = 5000,
+  verbose = TRUE
+)
+
+# metacell <- db@misc[["metacell"]][["wgcna_metacell_obj"]]
+# Save and reload if needed
+# qsave(metacell, file.path(figdir,"huARdb_filtered_metacell_object_hdWGCNA_Function_MetacellsByGroups_k15_mincells50_maxshared5_sum_counts_groupbyCluster_names.rds"))
+# metacell <- qread(file.path(figdir,"huARdb_filtered_metacell_object_hdWGCNA_Function_MetacellsByGroups_k15_mincells50_maxshared5_sum_counts_groupbyCluster_names.rds"))
+rm(db)
+gc()
+
+# ---------- Set cluster identities in metacell ----------
+metacell$Cluster_names <- factor(metacell$Cluster_names, levels = cluster_levels)
+Idents(metacell) <- metacell$Cluster_names
+metacell$broad_clusters <- as.character(metacell$Cluster_names)
+metacell$broad_clusters[grep("^GZMK.*Tex", metacell$broad_clusters)]   <- "GZMK+ Tex"
+metacell$broad_clusters[grep("^XBP1.*Tex", metacell$broad_clusters)]   <- "XBP1+ Tex"
+metacell$broad_clusters[grep("^ITGAE.*Tex", metacell$broad_clusters)]  <- "ITGAE+ Tex"
+broad_levels <- intersect(full_levels, unique(metacell$broad_clusters))
+metacell$broad_clusters <- factor(metacell$broad_clusters, levels = broad_levels)
+
+# ---------- Add broadest clusters ----------
+nonexh_clusters <- c("Tn", "Early Tcm/Tem", "Tcm", "GZMK+ Tem", 
+                     "GNLY+ Temra", "CMC1+ Temra", "ZNF683+ Teff", 
+                     "MAIT", "ILTCK", "MACF1+ T", "CREM+ Trm", 
+                     "ITGB2+ Trm", "ITGAE+ Trm")
+exh_clusters <- c("Tpex", "GZMK+ Tex", "XBP1+ Tex", "ITGAE+ Tex","Cycling T")
+metacell$broadest_cluster <- ifelse(metacell$broad_clusters %in% nonexh_clusters, 
+                                    "nonexh",
+                                    ifelse(metacell$broad_clusters %in% exh_clusters,
+                                           "exh", 
+                                           NA))
+table(metacell$broadest_cluster, metacell$broad_clusters)
+
+# ---------- TF-gene pair preparation ----------
+tf_cols <- grep("_Acute$|_Chronic$", colnames(all_model_results_final), value = TRUE)
+tf_gene_lists <- list()
+for (tf_column_name in tf_cols) {
+  new_list_name <- sub("_Acute|_Chronic", "", tf_column_name)
+  genes <- unique(all_model_results_final$gene[all_model_results_final[[tf_column_name]] == 1])
+  genes <- genes[!grepl("^RPS|^RPL", genes)]
+  if (new_list_name %in% names(tf_gene_lists)) {
+    tf_gene_lists[[new_list_name]] <- unique(c(tf_gene_lists[[new_list_name]], genes))
+  } else {
+    tf_gene_lists[[new_list_name]] <- genes
+  }
+}
+list_of_dfs <- lapply(names(tf_gene_lists), function(tf) {
+  data.frame(TF = tf, gene = tf_gene_lists[[tf]], stringsAsFactors = FALSE)
+})
+tf_gene_pairs_for_modeling <- do.call(rbind, list_of_dfs)
+tf_gene_pairs_for_modeling <- tf_gene_pairs_for_modeling %>%
+  filter(TF %in% rownames(metacell) & gene %in% rownames(metacell)) %>% 
+  distinct(TF, gene)
+
+# ---------- Normalize expression ----------
+metacell <- NormalizeData(metacell, normalization.method = "CLR")
+
+# ---------- Proportionality calculation (no p-value) ----------
+rho_p_single <- function(Ai, Aj) {
+  var_sum <- var(Ai, na.rm = TRUE) + var(Aj, na.rm = TRUE)
+  if (is.na(var_sum) || var_sum == 0) return(NA_real_)
+  1 - (var(Ai - Aj, na.rm = TRUE) / var_sum)
+}
+compute_rho_p <- function(metacell = NULL,
+                          expr_override = NULL,
+                          pairs_df,
+                          assay = NULL,
+                          slot = "data",
+                          ncores = 1) {
+  if (!is.null(expr_override)) {
+    expr <- as.matrix(expr_override)
+  } else {
+    if (is.null(metacell)) stop("Either 'metacell' or 'expr_override' must be provided.")
+    if (is.null(assay)) assay <- DefaultAssay(metacell)
+    expr <- as.matrix(GetAssayData(metacell, assay = assay, slot = slot))
+  }
+  pairs_df <- as.data.frame(pairs_df, stringsAsFactors = FALSE)
+  pairs_df$TF   <- as.character(pairs_df$TF)
+  pairs_df$gene <- as.character(pairs_df$gene)
+  present_mask <- pairs_df$TF %in% rownames(expr) & pairs_df$gene %in% rownames(expr)
+  pairs_df <- pairs_df[present_mask, , drop = FALSE]
+  process_pair_worker <- function(ii, .pairs_df) {
+    tf <- .pairs_df$TF[ii]
+    gene <- .pairs_df$gene[ii]
+    Ai <- as.numeric(expr[tf, ])
+    Aj <- as.numeric(expr[gene, ])
+    obs_rho <- rho_p_single(Ai, Aj)
+    list(TF = tf, gene = gene, rho_p = obs_rho)
+  }
+  if (ncores > 1 && nrow(pairs_df) > 1) {
+    cl <- parallel::makeCluster(ncores)
+    on.exit(parallel::stopCluster(cl), add = TRUE)
+    parallel::clusterExport(cl, varlist = c("rho_p_single", "expr"))
+    res_list <- parallel::parLapply(cl, seq_len(nrow(pairs_df)), process_pair_worker, .pairs_df = pairs_df)
+  } else {
+    res_list <- lapply(seq_len(nrow(pairs_df)), process_pair_worker, .pairs_df = pairs_df)
+  }
+  results_df <- data.frame(
+    TF     = vapply(res_list, `[[`, character(1), "TF"),
+    gene   = vapply(res_list, `[[`, character(1), "gene"),
+    rho_p  = vapply(res_list, `[[`, numeric(1),   "rho_p"),
+    stringsAsFactors = FALSE
+  )
+  return(results_df)
+}
+needed_genes <- unique(c(tf_gene_pairs_for_modeling$TF, tf_gene_pairs_for_modeling$gene))
+available_genes <- rownames(GetAssayData(metacell, slot = "data"))
+needed_genes <- intersect(needed_genes, available_genes)
+
+# ---------- Run proportionality by cluster ----------
+cell_types <- unique(metacell$broad_clusters)
+results_by_cluster <- lapply(cell_types, function(ct) {
+  cells_ct <- colnames(metacell)[metacell$broad_clusters == ct]
+  expr_ct <- as.matrix(GetAssayData(metacell, slot = "data"))[needed_genes, cells_ct, drop = FALSE]
+  df <- compute_rho_p(expr_override = expr_ct, pairs_df = tf_gene_pairs_for_modeling, ncores = 5)
+  df$Cluster <- ct
+  return(df)
+})
+results_all_clusters <- do.call(rbind, results_by_cluster)
+cell_types <- unique(metacell$broadest_cluster)
+results_broadest_clusters <- lapply(cell_types, function(ct) {
+  cells_ct <- colnames(metacell)[metacell$broadest_cluster == ct]
+  expr_ct <- as.matrix(GetAssayData(metacell, slot = "data"))[needed_genes, cells_ct, drop = FALSE]
+  df <- compute_rho_p(expr_override = expr_ct, pairs_df = tf_gene_pairs_for_modeling, ncores = 5)
+  df$Cluster <- ct
+  return(df)
+})
+results_broadest_clusters <- do.call(rbind, results_broadest_clusters)
+all_cells <- colnames(metacell)
+expr_all <- as.matrix(GetAssayData(metacell, slot = "data"))[needed_genes, all_cells, drop = FALSE]
+results_all_together <- compute_rho_p(expr_override = expr_all, pairs_df = tf_gene_pairs_for_modeling, ncores = 5)
+results_all_together$Cluster <- "All"
+results_combined <- rbind(results_all_clusters, results_all_together,results_broadest_clusters)
+
+# ---------- Filter, summarize, and build regulons ----------
+results_final <- results_combined %>% 
+  filter(Cluster %in% c("exh","nonexh")) %>%
+  filter(abs(rho_p) > 0.15) %>% 
+  mutate(abs_rhop = abs(rho_p)) %>%
+  mutate(Cluster = factor(Cluster,levels=c("nonexh","exh")))
+tf_gene_summary <- results_final %>%
+  group_by(TF, gene) %>%
+  dplyr::summarise(
+    n_significant_clusters = dplyr::n(),                       
+    clusters = paste(unique(Cluster), collapse = ";"),     
+    mean_abs_rho = mean(abs_rhop, na.rm = TRUE),               
+    max_abs_rho  = max(abs_rhop, na.rm = TRUE)           
+  ) %>%
+  ungroup() %>%
+  arrange(desc(n_significant_clusters), desc(mean_abs_rho))
+tf_gene_lists <- results_final %>%
+  group_by(TF) %>%
+  dplyr::summarise(
+    pos_genes = list(unique(gene[rho_p > 0])),
+    neg_genes = list(unique(gene[rho_p < 0])),
+    .groups = "drop"
+  )
+regulon_list <- list()
+for(i in seq_len(nrow(tf_gene_lists))) {
+  tf_name <- tf_gene_lists$TF[i]
+  if(length(tf_gene_lists$pos_genes[[i]]) > 0) {
+    regulon_list[[paste0(tf_name, "_pos")]] <- tf_gene_lists$pos_genes[[i]]
+  }
+  if(length(tf_gene_lists$neg_genes[[i]]) > 0) {
+    regulon_list[[paste0(tf_name, "_neg")]] <- tf_gene_lists$neg_genes[[i]]
+  }
+}
+
+# ---------- Add regulon module scores ----------
+library(UCell)
+metacell <- NormalizeData(metacell)
+metacell <- AddModuleScore_UCell(metacell, features=regulon_list, name = "", ncores = 7, slot="data")
+
+# ---------- Heatmap of positive regulons ----------
+library(ComplexHeatmap)
+library(circlize)
+order <- full_levels
+Idents(metacell) <- factor(Idents(metacell),levels=order)
+metacell@meta.data$Cluster_names<- factor(metacell@meta.data$Cluster_names,levels=order)
+regulon_score_cols <- grep("_pos$",colnames(metacell@meta.data),value=TRUE)
+plot_data <- metacell@meta.data %>%
+  dplyr::select(Cluster_names, all_of(regulon_score_cols))
+average_scores_df <- plot_data %>%
+  dplyr::group_by(Cluster_names) %>%
+  dplyr::summarise(
+    dplyr::across(
+      all_of(regulon_score_cols), 
+      \(x) mean(x, na.rm = TRUE)
+    )
+  ) %>%
+  dplyr::ungroup()
+heatmap_matrix <- average_scores_df %>%
+  tibble::column_to_rownames("Cluster_names") %>%
+  t() %>%
+  as.matrix()
+rownames(heatmap_matrix) <- gsub("_pos","",rownames(heatmap_matrix))
+pal <- paletteContinuous("solarExtra")
+col_fun <- colorRamp2(seq(0, 0.3, length.out = length(pal)), pal)
+ht <- Heatmap(
+  heatmap_matrix,
+  name = "Regulon Score",
+  col = col_fun,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  border = TRUE,
+  column_names_rot = 45,
+  show_row_dend = TRUE,
+  show_column_dend = TRUE,
+  row_title = "TF Regulon",
+  row_title_gp = gpar(fontsize = 14, fontface = "bold"),
+  column_names_gp = gpar(fontsize = 10,fontface="bold"),
+  width = unit(ncol(heatmap_matrix) * 0.7, "cm"),
+  height = unit(nrow(heatmap_matrix) * 0.6, "cm"),
+  heatmap_legend_param = list(
+    legend_height = unit(1.5, "cm"),
+    grid_width = unit(2.5, "mm"),
+    at = c(0, 0.3),
+    title = "TF Regulon\nModule Score",
+    title_gp = gpar(fontsize = 10,fontface="bold"),
+    labels_gp = gpar(fontsize = 8)
+  )
+)
+png(file.path(figdir,"Full_huARdb_Pos_TF_regulons.png"), width = 10, height = 6, units = "in", res = 300)
+ComplexHeatmap::draw(ht)
+dev.off()
+pdf(file.path(figdir,"Full_huARdb_Pos_TF_regulons.pdf"), width = 10, height = 6)
+ComplexHeatmap::draw(ht)
+dev.off()
+
+# ---------- DimPlot of clusters ----------
+db <- qread(file.path(figdir,"huARdb_Full_scRNA_mt7.5_full_and_tex_subclustering_umap_and_metadata.rds"))
+present_levels <- intersect(order, unique(db$cell_subtype_4))
+db$cell_subtype_4 <- factor(db$cell_subtype_4, levels = present_levels)
+pal <- setNames(paletteDiscrete(values = present_levels, set = "circus"), present_levels)
+md <- db[[]]
+coords <- Embeddings(db[["umap"]])
+md <- cbind(md, coords)
+plot <- ggplot(md, aes(x = UMAP_1, y = UMAP_2, color = cell_subtype_4)) +
+  geom_point(shape = 16, size = 0.05,alpha=0.9) +
+  scale_color_manual(values = pal) +
+  theme_classic(base_size = 10) +
+  labs(x = "UMAP1", y = "UMAP2", color = "Cluster") +
+  theme(axis.text.x = element_text(size = 10,color="black"),
+        axis.text.y = element_text(size = 10,color="black"),
+        axis.title = element_text(size = 10, face = "bold",color="black"),
+        axis.text = element_text(size = 10,color="black"),
+        legend.text = element_text(size = 8.5,color="black"),
+        legend.title = element_text(size = 8.5, face = "bold",color="black"),
+        panel.grid = element_blank(),
+        axis.line = element_line(linewidth = 0.3),
+        legend.position = "right",
+        legend.margin = margin(0, 0, 0, 0),
+        legend.key.size = unit(1, "mm"),
+        legend.spacing.x = unit(1, "mm"),
+        legend.spacing.y = unit(1, "mm"),
+        legend.key.width  = unit(1, "mm")) +
+  guides(color = guide_legend(ncol = 1, override.aes = list(size = 2,alpha=1))) +
+  coord_fixed(ratio = 1, clip = "off")
+ggsave(plot,file = file.path(figdir,"DimPlot_fine_clustering_huARdb_Exh.png"),height = 4.5,width=4.5,units = "in",bg="white",dpi=300)
+ggsave(plot,file = file.path(figdir,"DimPlot_fine_clustering_huARdb_Exh.pdf"),height =4,width=4,units = "in")
+rm(db);gc()
+
+# ---------- NMF on positive regulons ----------
+library(GeneNMF)
+gc()
+pos_regulons <- regulon_list[grep("_pos$", names(regulon_list))]
+metacell@reductions[["NMF_UMAP"]] <- NULL
+metacell@reductions[["NMF"]] <- NULL
+metacell@meta.data <- metacell@meta.data[, !grepl("NMF_", colnames(metacell@meta.data))]
+metacell@meta.data <- metacell@meta.data[, 1:17]
+nmf_genes <- unique(c(unique(unlist(pos_regulons))))
+ndim = 9
+metacell <- runNMF(
+  metacell,
+  assay = "RNA",
+  slot = "data",
+  k = ndim,
+  new.reduction = "NMF",
+  seed = 123,
+  L1 = c(0.35, 0),
+  hvg = nmf_genes,
+  center = TRUE,
+  scale = TRUE
+)
+gc()
+nmf_loadings <- metacell@reductions[["NMF"]]@feature.loadings
+normalized_loadings <- apply(nmf_loadings, 2, function(col) {
+  if (sum(col) > 0) {
+    return(col / sum(col))
+  } else {
+    return(col)
+  }
+})
+list_of_top_genes <- lapply(colnames(normalized_loadings), function(factor_name) {
+  factor_vector <- normalized_loadings[, factor_name]
+  sorted_vector <- sort(factor_vector, decreasing = TRUE)
+  cumulative_sum <- cumsum(sorted_vector)
+  selected_genes <- names(sorted_vector)[cumulative_sum <= 0.8]
+  if (length(selected_genes) == 0 && length(sorted_vector) > 0) {
+    return(names(sorted_vector)[1])
+  }
+  return(selected_genes)
+})
+names(list_of_top_genes) <- colnames(normalized_loadings)
+programs <- list_of_top_genes
+num_programs <- length(programs)
+program_names <- names(programs)
+similarity_matrix <- matrix(0, nrow = num_programs, ncol = num_programs,
+                           dimnames = list(program_names, program_names))
+for (i in 1:num_programs) {
+  for (j in i:num_programs) {
+    genes1 <- programs[[i]]
+    genes2 <- programs[[j]]
+    intersection_size <- length(intersect(genes1, genes2))
+    union_size <- length(union(genes1, genes2))
+    jaccard_sim <- if (union_size > 0) intersection_size / union_size else 0
+    similarity_matrix[i, j] <- jaccard_sim
+    similarity_matrix[j, i] <- jaccard_sim
+  }
+}
+library(pheatmap)
+size=40
+breaks <- seq(0, 1, length.out = 101)
+pheatmap(
+  similarity_matrix,
+  main = "Pairwise Similarity of NMF Programs",
+  breaks = breaks,
+  clustering_method = "ward.D2",
+  display_numbers = round(similarity_matrix, 2),
+  fontsize_number = 15,
+  number_color = "white",
+  cellwidth = size,
+  cellheight = size
+)
+
+# ---------- Score NMF gene sets ----------
+metacell <- AddModuleScore_UCell(metacell, features = list_of_top_genes, name = "", ncores = 4)
+
+# ---------- Expression heatmap ----------
+cluster_order <- full_levels
+metacell$Cluster_names <- factor(metacell$Cluster_names,
+                                 levels=intersect(cluster_order,unique(metacell$Cluster_names)))
+Idents(metacell) <- metacell$Cluster_names
+pos_regulons <- regulon_list[grep("_pos$", names(regulon_list))]
+all_programs <- names(list_of_top_genes)
+program_name_map <- setNames(names(list_of_top_genes), all_programs)
+final_order <- names(list_of_top_genes)
+target_tfs <- c("RBPJ_pos", "TCF7_pos", "SOX4_pos", "TOX_pos", "TOX2_pos")
+tf_colors <- c("RBPJ"="#000436", "SOX4"="#1632FB", "TCF7"="#C732D5", "TOX"="#FDB31A", "TOX2"="#A31D1D")
+genes_to_plot <- c()
+gene_program_map <- c()
+tf_annotation_list <- list(RBPJ=c(), SOX4=c(), TCF7=c(), TOX=c(), TOX2=c())
+for (prog in all_programs) {
+  genes_in_program <- intersect(list_of_top_genes[[prog]], rownames(metacell))
+  human_readable_name <- program_name_map[prog]
+  genes_to_plot <- c(genes_to_plot, genes_in_program)
+  gene_program_map <- c(gene_program_map, rep(human_readable_name, length(genes_in_program)))
+  for (tf in target_tfs) {
+    tf_name <- gsub("_pos", "", tf)
+    is_regulated_text <- ifelse(genes_in_program %in% pos_regulons[[tf]], "Target", "Not Target")
+    tf_annotation_list[[tf_name]] <- c(tf_annotation_list[[tf_name]], is_regulated_text)
+  }
+}
+expr_matrix <- GetAssayData(metacell, assay="RNA", slot="data")[genes_to_plot, ]
+cluster_levels <- levels(metacell$Cluster_names)
+scaled_expr <- sapply(cluster_levels, function(clust) {
+  cells <- WhichCells(metacell, idents = clust)
+  rowMeans(expr_matrix[, cells, drop = FALSE])
+})
+colnames(scaled_expr) <- cluster_levels
+scaled_expr <- t(scale(t(scaled_expr)))
+scaled_expr[is.na(scaled_expr)] <- 0
+top_annot_df <- data.frame(
+  Cluster = factor(colnames(scaled_expr), levels = cluster_levels),
+  row.names = colnames(scaled_expr)
+)
+cluster_palette <- setNames(paletteDiscrete(values = cluster_levels, set = "circus"), cluster_levels)
+top_annotation_clusters <- HeatmapAnnotation(
+  df = top_annot_df,
+  col = list(Cluster = cluster_palette),
+  annotation_name_gp = gpar(fontsize = 6, fontface = "bold"),
+  show_annotation_name = TRUE,
+  annotation_name_side = "left",
+  simple_anno_size = unit(2, "mm"),
+  annotation_legend_param = list(
+    title = "Cluster",
+    title_gp = gpar(fontsize = 5, fontface = "bold"),
+    labels_gp = gpar(fontsize = 5),
+    grid_height = unit(2, "mm"),
+    grid_width = unit(2, "mm"),
+    ncol = 1
+  )
+)
+tf_order <- c("RBPJ", "SOX4", "TCF7", "TOX", "TOX2")
+row_annot_df <- as.data.frame(tf_annotation_list, stringsAsFactors = FALSE)[, tf_order]
+row_annot_df$Program <- factor(gene_program_map, levels = final_order)
+for(tf in tf_order) {
+  row_annot_df[[tf]] <- factor(ifelse(row_annot_df[[tf]] == "Target", "Target", "Not Target"),
+                               levels = c("Target", "Not Target"))
+}
+tf_color_map <- lapply(tf_order, function(tf) {
+  setNames(c(tf_colors[tf], "grey95"), c("Target", "Not Target"))
+})
+names(tf_color_map) <- tf_order
+program_palette <- setNames(turbo(length(names(list_of_top_genes))), final_order)
+combined_colors <- c(list(Program = program_palette), tf_color_map)
+row_annotation_all <- rowAnnotation(
+  df = row_annot_df,
+  col = combined_colors,
+  show_annotation_name = TRUE,
+  annotation_name_gp = gpar(fontsize = 6, fontface = "bold"),
+  border = TRUE,
+  simple_anno_size = unit(1.75, "mm"), 
+  gap = unit(0.75, "mm"), 
+  annotation_legend_param = list(
+    title_gp = gpar(fontsize = 5, fontface = "bold"),
+    labels_gp = gpar(fontsize = 5),
+    grid_height = unit(2, "mm"),
+    grid_width = unit(2, "mm")
+  )
+)
+program_split <- factor(gene_program_map, levels = final_order)
+split_index <- which(cluster_levels == "ITGAE+ Trm")
+column_group_vector <- c(rep("Non-Exhausted", split_index), 
+                         rep("Exhausted", length(cluster_levels) - split_index))
+column_split_groups <- factor(column_group_vector, levels = c("Non-Exhausted", "Exhausted"))
+cols <- paletteContinuous("blueYellow")
+col_fun <- colorRamp2(seq(-2, 2, length.out = length(cols)), cols)
+ht <- Heatmap(
+  scaled_expr,
+  use_raster = TRUE,
+  raster_quality = 10,
+  name = "Z-Scaled\nExpr",
+  cluster_columns = FALSE,
+  column_split = column_split_groups,
+  cluster_rows = FALSE,
+  cluster_row_slices = FALSE,
+  row_split = program_split,
+  right_annotation = row_annotation_all,
+  top_annotation = top_annotation_clusters,
+  show_row_names = FALSE,
+  show_column_names = FALSE,
+  show_row_dend = FALSE,
+  row_dend_side = "left",
+  show_parent_dend_line = FALSE,
+  column_gap = unit(1, "mm"),
+  row_gap = unit(0.5, "mm"),
+  border = TRUE,
+  row_title=NULL,
+  column_dend_height = unit(0, "cm"),
+  row_title_gp = gpar(fontsize = 6, fontface = "bold"),
+  column_title_gp = gpar(fontsize = 6, fontface = "bold"),
+  col = col_fun,
+  heatmap_legend_param = list(
+    title = "Z-Scaled\nExpr",
+    title_gp = gpar(fontsize = 5, fontface = "bold"),
+    labels_gp = gpar(fontsize = 5),
+    legend_height = unit(4, "mm"),
+    grid_width = unit(2.5, "mm")
+  )
+)
+png(file.path(figdir, "huARdb_avg_pos_NMF_Program_Genes_Heatmap.png"),
+    width = 5.25, height = 4.5, units = "in", res = 300)
+ComplexHeatmap::draw(ht, heatmap_legend_side = "right", annotation_legend_side = "right")
+dev.off()
+pdf(file.path(figdir, "huARdb_avg_pos_NMF_Program_Genes_Heatmap.pdf"),
+    width = 5.25, height = 4.5)
+ComplexHeatmap::draw(ht, heatmap_legend_side = "right", annotation_legend_side = "right")
+dev.off()
+
+# ---------- Proportion of genes bound by each TF ----------
+proportion_bound <- row_annot_df %>%
+  group_by(Program) %>%
+  summarise(across(all_of(tf_order),
+                   ~ mean(.x == "Target"),
+                   .names = "{col}"))
+proportion_bound
