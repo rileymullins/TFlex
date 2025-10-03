@@ -1,17 +1,17 @@
 #==================================================================================================
-# R SCRIPT FOR FIGURE 6 ANALYSIS
+# R SCRIPT FOR FIGURE 6 ANALYSIS (Updated file paths to be generalizable. Simplified code.) 
 # DATE: October 03, 2025
 #
 # DESCRIPTION:
 # This script performs a comparative analysis of binding sites and target gene effects for
-# JUN, FOSL1, BATF, and a DESynR domain-swapped TF (JUN.FOS.BATF). The analysis includes:
+# JUN, FOSL1, BATF, and the DESynR domain-swapped TF JUN.FOS.BATF. The includes:
 # 1.  HOMER motif enrichment analysis plot.
 # 2.  Heatmap visualization of normalized peak signals across TFs to identify co-binding patterns.
 # 3.  Quantification and plotting of peak counts for various TF binding combinations.
 # 4.  Identification of gene targets for co-bound sites by integrating peak data with promoter
 #     and enhancer annotations.
 # 5.  Differential gene expression analysis and heatmap visualization of target genes to assess
-#     the functional impact of TF binding.
+#     the target gene effects.
 #==================================================================================================
 
 # --- 1. LOAD REQUIRED LIBRARIES ---
