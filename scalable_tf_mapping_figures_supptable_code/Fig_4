@@ -640,7 +640,7 @@ proportion_bound <- row_annot_df %>%
   summarise(across(all_of(tf_order), ~ mean(.x == "Target"), .names = "{col}"))
 print(proportion_bound)
 
-
+write.csv(proportion_genes_bound_by_each_tf_in_v2_NMF
 
 
 
