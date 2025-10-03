@@ -481,12 +481,17 @@ for (set_name in names(sets_list)) {
   color_fun_atac <- colorRamp2(seq(-2, 2, length.out = length(pal_atac)), pal_atac)
   color_fun_rna <- colorRamp2(seq(-2, 2, length.out = length(pal_rna)), pal_rna)
   
-  ht_atac <- Heatmap(atac_final_reordered, name = "ATAC Z-Score", col = color_fun_atac,
+  ht_atac <- Heatmap(atac_final_reordered, name = "ATAC Z-Score", col = color_fun_atac,   
+     width = total_heatmap_width,
+    height = total_heatmap_height,
+
                      top_annotation = final_col_annotation, cluster_columns = FALSE, show_row_names = FALSE,
                      show_column_names = FALSE, column_split = col_cluster_df$cluster, row_split = row_split_factor,
                      column_title = "ATAC Peak Signal", use_raster = TRUE, raster_quality = 10)
                      
   ht_rna <- Heatmap(rna_final_reordered, name = "RNA Z-Score", col = color_fun_rna,
+     width = total_heatmap_width,
+    height = total_heatmap_height,
                     top_annotation = final_col_annotation, cluster_columns = FALSE, show_row_names = FALSE,
                     show_column_names = FALSE, column_split = col_cluster_df$cluster, row_title = NULL,
                     column_title = "RNA Gene Expr", use_raster = TRUE, raster_quality = 10)
@@ -494,14 +499,23 @@ for (set_name in names(sets_list)) {
   # Draw and save the combined heatmap.
   png(file.path(outdir, paste0("peak_gene_links_matched_heatmap_", set_name, ".png")),
       width = 5, height = 6.5, units = "in", res = 300)
-  draw(ht_atac + ht_rna, heatmap_legend_side = "right", annotation_legend_side = "right", merge_legend = TRUE)
+  ComplexHeatmap::draw(ht_atac + ht_rna,
+       heatmap_legend_side = "right",
+       annotation_legend_side = "right",
+       ht_gap                 = unit(0.05, "mm"),
+       legend_gap             = unit(0.5, "mm"),
+       merge_legend = TRUE)
   dev.off()
   
   pdf(file.path(outdir, paste0("peak_gene_links_matched_heatmap_", set_name, ".pdf")),
-      width = 10, height = 10)
-  draw(ht_atac + ht_rna, heatmap_legend_side = "right", annotation_legend_side = "right", merge_legend = TRUE)
+      width = 10, height = 10) 
+  ComplexHeatmap::draw(ht_atac + ht_rna,
+       heatmap_legend_side = "right",
+       annotation_legend_side = "right",
+       ht_gap                 = unit(0.05, "mm"),
+       legend_gap             = unit(0.5, "mm"),
+       merge_legend = TRUE)
   dev.off()
-  message("Saved heatmaps for set: ", set_name)
 }
 
 # --- 14. STATISTICAL TESTS FOR TF BINDING AT ENHANCERS ---
