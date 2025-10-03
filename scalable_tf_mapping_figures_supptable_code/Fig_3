@@ -9,9 +9,8 @@
 # 2.  Identifying which pairs are bound by specific transcription factors (TFs).
 # 3.  Performing linear regression and correlation analysis to find dynamic pairs.
 # 4.  Adding back promoter-bound genes that were not in the original pairs.
-# 5.  Visualizing the overlap and expression of key TF targets (TOX and TCF7).
-# 6.  Generating paired heatmaps of RNA expression and ATAC accessibility for TF-specific gene sets.
-# 7.  Conducting permutation and Fisher's exact tests for TF binding enrichment at enhancers.
+# 5.  Generating paired heatmaps of RNA expression and ATAC accessibility for TF-specific gene sets.
+# 6.  Conducting permutation and Fisher's exact tests for TF binding enrichment at enhancers.
 #==================================================================================================
 
 # --- 1. LOAD LIBRARIES ---
