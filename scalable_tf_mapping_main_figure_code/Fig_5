@@ -1,15 +1,18 @@
-# Figure 5 Analysis: Generalizable, Annotated, Executable R Script
+# Figure 5 
+# October 3, 2025
+# Description: compare standard CCs to TFlex using SRT insertion counts binned in the genome.
+
 
 #---------------------------------------------------------
 # Load Required Libraries
 #---------------------------------------------------------
-library(data.table)   # For fast data loading and manipulation
-library(dplyr)        # For data manipulation
-library(ggplot2)      # For plotting
-library(pheatmap)     # For heatmap visualization
-library(ComplexHeatmap) # For advanced heatmaps
-library(circlize)     # For color palettes in heatmaps
-library(grid)         # For unit function in annotations
+library(data.table)  
+library(dplyr)       
+library(ggplot2)      
+library(pheatmap)     
+library(ComplexHeatmap) 
+library(circlize)     
+library(grid)       
 
 #---------------------------------------------------------
 # Define Generalizable File Paths
