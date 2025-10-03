@@ -21,7 +21,7 @@ suppressPackageStartupMessages({
   library(grid)
 })
 
-# --- 2. DEFINE GENERALIZABLE FILE PATHS ---
+# --- 2. DEFINE FILE PATHS ---
 base_dir <- "/path/to/your/project/directory"
 
 # Construct input and output directories from the base path.
