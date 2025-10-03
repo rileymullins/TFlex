@@ -12,13 +12,9 @@
 #==================================================================================================
 
 # --- 1. LOAD REQUIRED LIBRARIES ---
-# Suppress package startup messages for a cleaner console output.
 suppressPackageStartupMessages({
-  # Core data manipulation and reading
   library(data.table)
   library(dplyr)
-  
-  # Visualization
   library(ggplot2)
   library(ComplexHeatmap)
   library(circlize)
@@ -26,8 +22,6 @@ suppressPackageStartupMessages({
 })
 
 # --- 2. DEFINE GENERALIZABLE FILE PATHS ---
-# Define a single base directory for portability. All other paths are relative to this.
-# !! IMPORTANT !!: Update this path to the root of the project directory.
 base_dir <- "/path/to/your/project/directory"
 
 # Construct input and output directories from the base path.
