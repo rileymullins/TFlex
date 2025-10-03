@@ -25,9 +25,9 @@ suppressPackageStartupMessages({
 base_dir <- "/path/to/your/project/directory"
 
 # Construct input and output directories from the base path.
-data_dir <- file.path(base_dir, "DATA_DIR")       # Directory for input data
-fig_dir <- file.path(base_dir, "FIGS_DIR")        # Directory for figure output
-peak_dir <- file.path(base_dir, "PEAKS_DIR")      # Directory for peak analysis results
+data_dir <- file.path(base_dir, "DATA_DIR")       
+fig_dir <- file.path(base_dir, "FIGS_DIR")      
+peak_dir <- file.path(base_dir, "PEAKS_DIR")     
 
 # Create the figure directory if it does not already exist.
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
