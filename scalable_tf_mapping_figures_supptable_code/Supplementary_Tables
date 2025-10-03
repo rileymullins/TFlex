@@ -3,7 +3,7 @@
 # DATE: October 03, 2025
 #
 # DESCRIPTION:
-# This script generates several supplementary tables for the Figure 6 analysis. The process includes:
+# This script generates supplementary tables. The includes:
 # 1.  Aggregating HOMER-annotated peak data from multiple experiments (Supplementary Table 1).
 # 2.  Processing a public enhancer-gene link database (Supplementary Table 2).
 # 3.  Integrating TF binding, enhancer/promoter links, and expression data to perform
