@@ -407,7 +407,8 @@ sets_list <- list(
 )
 
 # Define heatmap parameters.
-n_rows_max <- max(sapply(sets_list, nrow), 1)
+n_rows_per_set <- sapply(sets_list, function(df) nrow(df %>% distinct(acr_id, gene)))
+n_rows_max <- max(n_rows_per_set, 1)
 n_cols <- ncol(rna_mat)
 cell_width <- unit(0.2, "mm")
 cell_height <- unit(0.14, "mm")
