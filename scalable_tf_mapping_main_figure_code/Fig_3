@@ -1,4 +1,7 @@
-# Figure 3: DESeq2 ACR-Gene Pairs Full Analysis with Heatmaps (Generalizable Paths)
+# Figure 3
+# October 03, 2025
+# Description: Filter to dynamic co-regulated and bound enhancer-gene pairs, plot TOX and TCF7 expression, and
+  # make heatmaps of gene RNA expression and enhancer region ATAC signal paired by row for enhancer-gene pairs.
 
 suppressPackageStartupMessages({
   library(scales)
@@ -720,14 +723,17 @@ count_both_tox_tcf7 <- binding_summary %>%
   filter(bound_by_TOX & bound_by_TCF7) %>%
   summarise(unique_acr_count = n_distinct(acr_gene)) %>%
   pull(unique_acr_count)
+
 count_only_tox <- binding_summary %>%
   filter(bound_by_TOX & !bound_by_TCF7) %>%
   summarise(unique_acr_count = n_distinct(acr_gene)) %>%
   pull(unique_acr_count)
+
 count_only_tcf7 <- binding_summary %>%
   filter(!bound_by_TOX & bound_by_TCF7) %>%
   summarise(unique_acr_count = n_distinct(acr_gene)) %>%
   pull(unique_acr_count)
+
 cat("--- Summary of Unique ACRs Bound by TOX and TCF7 ---\n")
 cat("Total unique ACRs bound by BOTH TOX and TCF7:", count_both_tox_tcf7, "\n")
 cat("Total unique ACRs bound ONLY by TOX:", count_only_tox, "\n")
@@ -737,6 +743,7 @@ count_either_tox_or_tcf7 <- binding_summary %>%
   filter(bound_by_TOX | bound_by_TCF7) %>%
   summarise(unique_count = n_distinct(acr_id)) %>%
   pull(unique_count)
+
 cat("--- Summary of Unique ACR-Gene Pairs ---\n")
 cat("Total unique pairs bound by EITHER TOX or TCF7:", count_either_tox_or_tcf7, "\n")
 verification_total <- count_only_tox + count_only_tcf7 + count_both_tox_tcf7
@@ -746,18 +753,22 @@ binding_summary <- all_model_results_final %>%
   mutate(bound_by_TOX = (TOX_Acute == 1),
          bound_by_TCF7 = (TCF7_Acute == 1),
          acr_gene = paste0(acr_id, "_x_", gene))
+
 count_both_tox_tcf7 <- binding_summary %>%
   filter(bound_by_TOX & bound_by_TCF7) %>%
   summarise(unique_acr_count = n_distinct(paste0(acr_id))) %>%
   pull(unique_acr_count)
+
 count_only_tox <- binding_summary %>%
   filter(bound_by_TOX & !bound_by_TCF7) %>%
   summarise(unique_acr_count = n_distinct(acr_id)) %>%
   pull(unique_acr_count)
+
 count_only_tcf7 <- binding_summary %>%
   filter(!bound_by_TOX & bound_by_TCF7) %>%
   summarise(unique_acr_count = n_distinct(acr_id)) %>%
   pull(unique_acr_count)
+
 cat("--- Summary of Unique ACRs Bound by TOX and TCF7 ---\n")
 cat("Total unique ACRs bound by BOTH TOX and TCF7:", count_both_tox_tcf7, "\n")
 cat("Total unique ACRs bound ONLY by TOX:", count_only_tox, "\n")
@@ -767,6 +778,7 @@ count_either_tox_or_tcf7 <- binding_summary %>%
   filter(bound_by_TOX | bound_by_TCF7) %>%
   summarise(unique_count = n_distinct(acr_id)) %>%
   pull(unique_count)
+
 cat("--- Summary of Unique ACR-Gene Pairs ---\n")
 cat("Total unique pairs bound by EITHER TOX or TCF7:", count_either_tox_or_tcf7, "\n")
 verification_total <- count_only_tox + count_only_tcf7 + count_both_tox_tcf7
@@ -777,6 +789,7 @@ acr_annot <- fread(file.path(bulk_atac_dir, "all_acrs_HOMER_annotated.txt")) %>%
   mutate(acr_id = paste0(Chr, "_", Start, "_", End)) %>%
   select(acr_id, Chr, Start, End) %>%
   distinct()
+
 all_acrs_gr <- makeGRangesFromDataFrame(acr_annot,
                                         seqnames.field = "Chr",
                                         start.field = "Start",
@@ -794,8 +807,10 @@ names(tf_peaks_gr_list) <- tf_groups
 enhancer_acrs_df <- binding_summary %>%
   distinct(acr_id, .keep_all = TRUE) %>%
   filter(bound_by_TCF7 == TRUE)
+
 enhancer_acrs_df <- enhancer_acrs_df %>%
   separate(acr_id, into = c("chr", "start", "end"), sep = "_", convert = TRUE)
+
 enhancer_acrs_gr <- makeGRangesFromDataFrame(
   enhancer_acrs_df,
   seqnames.field = "chr",
@@ -803,6 +818,7 @@ enhancer_acrs_gr <- makeGRangesFromDataFrame(
   end.field = "end",
   keep.extra.columns = TRUE
 )
+
 length(enhancer_acrs_gr)
 
 plan(multisession, workers = 10)
@@ -838,16 +854,22 @@ results_df <- bind_rows(results)
 print(results_df)
 
 mcols(enhancer_acrs_gr)$acr_gene <- enhancer_acrs_df$acr_gene
+
 tox_hits <- findOverlaps(tf_peaks_gr_list[["TOX_Acute"]], enhancer_acrs_gr)
 tcf7_hits <- findOverlaps(tf_peaks_gr_list[["TCF7_Acute"]], enhancer_acrs_gr)
+
 tox_enhancer_acr_genes <- unique(mcols(enhancer_acrs_gr)$acr_gene[subjectHits(tox_hits)])
 tcf7_enhancer_acr_genes <- unique(mcols(enhancer_acrs_gr)$acr_gene[subjectHits(tcf7_hits)])
+
 length(tox_enhancer_acr_genes)
 length(tcf7_enhancer_acr_genes)
+
 tox_bound <- tox_enhancer_acr_genes
 tcf7_bound <- tcf7_enhancer_acr_genes
+
 tox_set <- unique(tox_bound)
 tcf7_set <- unique(tcf7_bound)
+
 both_bound <- intersect(tox_set, tcf7_set)
 tox_only   <- setdiff(tox_set, both_bound)
 tcf7_only  <- setdiff(tcf7_set, both_bound)
