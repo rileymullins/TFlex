@@ -345,15 +345,76 @@ heatmap_matrix <- average_scores_df %>%
   tibble::column_to_rownames("Cluster_names") %>% t()
 rownames(heatmap_matrix) <- gsub("_pos", "", rownames(heatmap_matrix))
 
+# TF expression annotation
+tfs <- c("RBPJ", "SOX4", "TCF7", "TOX", "TOX2")
+
+# Make sure expr_mat and metadata line up
+expr_mat <- GetAssayData(metacell, layer = "data")
+meta <- metacell@meta.data
+
+# Reorder metadata to match expr_mat columns
+meta <- meta[colnames(expr_mat), , drop = FALSE]
+cell_clusters <- meta$Cluster_names
+
+# Compute means in the correct cluster order
+avg_expr_df <- sapply(order[order %in% cell_clusters], function(clust) {
+  rowMeans(expr_mat[tfs, cell_clusters == clust, drop = FALSE], na.rm = TRUE)
+})
+
+# Transpose
+avg_expr_df <- t(avg_expr_df) # clusters × TFs
+
+# Align TF annotation to heatmap columns
+avg_expr_df <- avg_expr_df[, tfs, drop = FALSE]
+
+# Ensure cluster (row) order in TF expression matches heatmap cluster (column) order
+avg_expr_df <- avg_expr_df[colnames(heatmap_matrix), , drop = FALSE]
+
+# Top annotation
+pal_tf <- paletteContinuous("fireworks")
+col_fun_tf <- colorRamp2(seq(0, 1.5, length.out = length(pal_tf)), pal_tf)
+
+# Make top expr mat
+top_anno <- HeatmapAnnotation(
+  df = as.data.frame(avg_expr_df),
+  col = setNames(rep(list(col_fun_tf), ncol(avg_expr_df)), colnames(avg_expr_df)),
+  simple_anno_size = unit(3, "mm"),
+  annotation_name_side = "left",
+  annotation_name_gp = gpar(fontsize = 10,fontface="italic"),
+  show_legend = FALSE
+)
+legend_tf <- Legend(
+  title = "Normalized TF\nExpr Counts",
+  col_fun = col_fun_tf,
+  at = c(0, 1.5),
+  labels = c("0", "1.5"),
+  direction = "vertical",
+  legend_height = unit(1.5, "cm"),
+  grid_width = unit(2.5, "mm"),
+  title_gp = gpar(fontsize = 10,fontface="bold"),
+  labels_gp = gpar(fontsize = 10)
+)
+
+
+
 # Define heatmap aesthetics.
 pal <- paletteContinuous("solarExtra")
 col_fun <- colorRamp2(seq(0, 0.3, length.out = length(pal)), pal)
+
 ht <- Heatmap(
-  heatmap_matrix, name = "Regulon Score", col = col_fun,
-  cluster_rows = FALSE, cluster_columns = FALSE, border = TRUE, column_names_rot = 45,
-  row_title = "TF Regulon", row_title_gp = gpar(fontsize = 14, fontface = "bold"),
+  heatmap_matrix, 
+  name = "Regulon Score", 
+  col = col_fun, 
+  top_annotation = top_anno, 
+  cluster_rows = FALSE, 
+  cluster_columns = FALSE, 
+  border = TRUE, 
+  column_names_rot = 45,
+  row_title = "TF Regulon", 
+  row_title_gp = gpar(fontsize = 14, fontface = "bold"),
   column_names_gp = gpar(fontsize = 10, fontface = "bold"),
-  width = unit(ncol(heatmap_matrix) * 0.7, "cm"), height = unit(nrow(heatmap_matrix) * 0.6, "cm")
+  width = unit(ncol(heatmap_matrix) * 0.7, "cm"), 
+  height = unit(nrow(heatmap_matrix) * 0.6, "cm")
 )
 
 # Save the heatmap.
