@@ -398,29 +398,70 @@ legend_tf <- Legend(
 pal <- paletteContinuous("solarExtra")
 col_fun <- colorRamp2(seq(0, 0.3, length.out = length(pal)), pal)
 
+
+# Draw heatmap
+width = unit(ncol(heatmap_matrix) * 0.7, "cm")
+height = unit(nrow(heatmap_matrix) * 0.6, "cm")
+
+# Update rownames
+rownames(heatmap_matrix) <- gsub("_pos","",rownames(heatmap_matrix))
+
+# Create heatmap
 ht <- Heatmap(
-  heatmap_matrix, 
-  name = "Regulon Score", 
-  col = col_fun, 
-  top_annotation = top_anno, 
-  cluster_rows = FALSE, 
-  cluster_columns = FALSE, 
-  border = TRUE, 
+  heatmap_matrix,
+  top_annotation = top_anno,
+  row_dend_width = unit(0.25, "cm"),
+  column_dend_height = unit(0.5, "cm"),
+  name = "Regulon Score",
+  col = col_fun,
+  cluster_rows = F,
+  cluster_columns = F,
+  row_dend_side = "right",
+  row_names_side = "left",
+  border = TRUE,
   column_names_rot = 45,
-  row_title = "TF Regulon", 
+  show_row_dend = TRUE,
+  show_column_dend = TRUE,
+  row_title = "TF Regulon",
   row_title_gp = gpar(fontsize = 14, fontface = "bold"),
-  column_names_gp = gpar(fontsize = 10, fontface = "bold"),
-  width = unit(ncol(heatmap_matrix) * 0.7, "cm"), 
-  height = unit(nrow(heatmap_matrix) * 0.6, "cm")
+  column_title = NULL,
+  row_names_gp = gpar(fontsize = 12,fontface="bold"),
+  column_names_gp = gpar(fontsize = 10,fontface="bold"),
+  width = width,
+  height = height,
+  heatmap_legend_param = list(
+    legend_height = unit(1.5, "cm"),
+    grid_width = unit(2.5, "mm"),
+    at = c(0, 0.3),
+    title = "TF Regulon\nModule Score",
+    title_gp = gpar(fontsize = 10,fontface="bold"),
+    labels_gp = gpar(fontsize = 8)
+  )
 )
 
-# Save the heatmap.
-png(file.path(figdir, "Full_huARdb_Pos_TF_regulons.png"), width = 10, height = 6, units = "in", res = 300)
-ComplexHeatmap::draw(ht)
+
+png(file.path(figdir,"Full_huARdb_Pos_TF_regulons.png"), width = 10, height = 6, units = "in", res = 300)
+
+ComplexHeatmap::draw(ht,
+                     heatmap_legend_side = "right",
+                     annotation_legend_side = "right",
+                     annotation_legend_list = list(legend_tf),
+                     ht_gap = unit(0.05, "mm"),
+                     legend_gap = unit(1, "mm"),
+                     merge_legend = TRUE)
 dev.off()
-pdf(file.path(figdir, "Full_huARdb_Pos_TF_regulons.pdf"), width = 10, height = 6)
-ComplexHeatmap::draw(ht)
+
+pdf(file.path(figdir,"Full_huARdb_Pos_TF_regulons.pdf"), width = 10, height = 6)
+ComplexHeatmap::draw(ht,
+                     heatmap_legend_side = "right",
+                     annotation_legend_side = "right",
+                     annotation_legend_list = list(legend_tf),
+                     ht_gap = unit(0.05, "mm"),
+                     legend_gap = unit(1, "mm"),
+                     merge_legend = TRUE)
 dev.off()
+
+
 
 # --- 10. VISUALIZE CLUSTERS ON UMAP ---
 # Load the full single-cell object for plotting.
