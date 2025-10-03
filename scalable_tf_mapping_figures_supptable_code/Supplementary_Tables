@@ -15,44 +15,32 @@
 #==================================================================================================
 
 # --- 1. LOAD REQUIRED LIBRARIES ---
-# Suppress package startup messages for a cleaner console output.
 suppressPackageStartupMessages({
-  # Core data manipulation and reading
   library(data.table)
   library(dplyr)
   library(tidyr)
   library(stringr)
   library(tibble)
-
-  # Visualization
   library(ggplot2)
   library(ComplexHeatmap)
   library(circlize)
   library(grid)
-  
-  # Genomics and annotation
   library(GenomicRanges)
   library(TxDb.Hsapiens.UCSC.hg38.knownGene)
   library(org.Hs.eg.db)
   library(AnnotationDbi)
-
-  # Parallel processing
   library(future)
   library(future.apply)
   library(progressr)
-  
-  # Fast object saving/loading
   library(qs)
 })
 
-# --- 2. DEFINE GENERALIZABLE FILE PATHS ---
-# Define base directories for portability. All other paths are relative to these.
-# !! IMPORTANT !!: Update these paths to the root of the project directories.
+# --- 2. DEFINE FILE PATHS ---
 base_dir_acute_chronic <- "/path/to/your/acute_chronic/project_directory"
 base_dir_TFlex <- "/path/to/your/TFlex/project_directory"
-base_dir_engreitz <- "/path/to/your/engreitz_db/directory"
+base_dir_engreitz <- "/path/to/your/engreitz_db/directory" # ENCODE-rE2G enhancers (supplementary table 2)
 base_dir_huardb <- "/path/to/your/huardb_analysis/directory"
-output_dir <- "/path/to/your/output_directory" # A single directory for all outputs
+output_dir <- "/path/to/your/output_directory" 
 
 # Construct specific input and output file paths.
 supplementary_tables_dir <- file.path(output_dir, "Supplementary_Tables")
@@ -64,7 +52,7 @@ annot_ch_file <- file.path(base_dir_acute_chronic, "STEP_4_output_deseq2_peak_an
 annot_bzip_file <- file.path(base_dir_TFlex, "full_dataset_without_pool2/STEP_4_output_deseq2_peak_analysis/HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
 
 # --- Supplementary Table 2 Inputs ---
-engreitz_input_file <- file.path(base_dir_engreitz, "CD8_T_Cell_ENCODE_rE2G_predictions_Engreitz_Lab.rds")
+engreitz_input_file <- file.path(base_dir_engreitz, "CD8_T_Cell_ENCODE_rE2G_predictions_Engreitz_Lab.rds") # ENCODE-rE2G enhancers (supplementary table 2)
 
 # --- Supplementary Table 3 Inputs ---
 engreitz_distinct_pairs_file <- file.path(base_dir_engreitz, "distinct_gene_pairs_unmerged_final.csv")
@@ -143,7 +131,7 @@ write.csv(e2g_combined, file = file.path(supplementary_tables_dir, "Supplementar
 
 
 #==================================================================================================
-# Supplementary Table 3 - Enhancer-Gene Pairs with Modeling Results
+# Supplementary Table 3 - Enhancer-Gene Pairs with Modeling Results for All TFs
 #==================================================================================================
 # Define parameters for promoter window.
 promoter_upstream <- 5000
