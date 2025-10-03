@@ -40,10 +40,9 @@ figdir <- file.path(output_dir, "figures")
 dir.create(figdir, recursive = TRUE, showWarnings = FALSE)
 
 # Define subdirectories for specific analysis outputs.
-bulk_rna_dir <- file.path(output_dir, "wherry_bulk_rna_seq_analysis")
-bulk_atac_dir <- file.path(output_dir, "wherry_bulk_atac_analysis")
-bzip_results_outdir <- file.path(bulk_atac_dir, "bZIP_combined_linear_regression")
-dir.create(bzip_results_outdir, recursive = TRUE, showWarnings = FALSE)
+rna_dir <- file.path(output_dir, "rna_seq_analysis")
+atac_dir <- file.path(output_dir, "atac_analysis")
+
 
 # --- 3. INITIAL DATA LOADING AND SETUP ---
 # Define promoter window size.
@@ -61,7 +60,7 @@ annot <- rbind(annot_ac, annot_ch)
 
 # Load MultiAssayExperiment object containing paired RNA and ATAC data.
 # RNA-seq data and ATAC-seq data lifted-over from h19 to hg38 from Human epigenetic and transcriptional T cell differentiation atlas for identifying functional T cell-specific enhancers. Immunity. 2022 Mar 8;55(3):557-574.e7. doi: 10.1016/j.immuni.2022.02.004. PMID: 35263570; PMCID: PMC9214622.
-mae_paired <- readRDS(file = file.path(bulk_atac_dir, "wherry_data_paired_rna_atac_multi_assay_experiment.rds"))
+mae_paired <- readRDS(file = file.path(atac_dir, "wherry_data_paired_rna_atac_multi_assay_experiment.rds"))
 
 # --- 4. EXTRACT AND PREPARE EXPRESSION/ACCESSIBILITY MATRICES ---
 # Extract RNA and ATAC SummarizedExperiment objects.
@@ -76,7 +75,7 @@ rownames(rna_mat) <- rowData(se_rna)$geneSymbol
 rna_mat <- rna_mat[!duplicated(rownames(rna_mat)), ] # Remove duplicate gene symbols.
 
 # Load and format Accessible Chromatin Region (ACR) annotations.
-group_annotation_file <- file.path(bulk_atac_dir, "all_acrs_HOMER_annotated.txt")
+group_annotation_file <- file.path(atac_dir, "all_acrs_HOMER_annotated.txt")
 acr_annot <- fread(group_annotation_file) %>%
   rename_with(~ gsub(" ", "_", .)) %>%
   dplyr::mutate(acr_id = paste0(Chr, "_", Start, "_", End)) %>%
