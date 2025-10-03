@@ -3,12 +3,11 @@
 # DATE: October 03, 2025
 #
 # DESCRIPTION:
-# This script performs a comprehensive analysis of ChIP-seq peak data. The analysis includes:
 # - Quantification and visualization of peak counts per transcription factor (TF) and condition.
 # - Motif enrichment analysis using HOMER results to validate TF binding.
 # - Gene Ontology (GO) enrichment analysis for genes associated with promoter-localized peaks.
 # - Annotation and visualization of the genomic distribution of peaks.
-# - Quantification of peak overlap with pre-defined accessible chromatin regions (ACRs).
+# - Quantification of peak overlap with ATAC-seq accessible chromatin regions (ACRs). (Human epigenetic and transcriptional T cell differentiation atlas for identifying functional T cell-specific enhancers. Immunity. 2022 Mar 8;55(3):557-574.e7. doi: 10.1016/j.immuni.2022.02.004. PMID: 35263570; PMCID: PMC9214622.)
 # - Permutation testing to determine the statistical significance of peak enrichment in promoter regions.
 #==================================================================================================
 
@@ -248,7 +247,7 @@ dot_plot <- ggplot(top_clusters, aes(x = group, y = Description, size = Count, c
     strip.text = element_text(size = 8, color = "black"),
     strip.background = element_blank()
   ) +
-  scale_y_discrete(limits = rev) # Reverse y-axis order.
+  scale_y_discrete(limits = rev) 
 
 # Save the dot plot.
 ggsave(file.path(figdir, "Top_Unique_GO_Promoter_Enriched_Terms_HOMER_Promoter_Protein_Coding.png"),
@@ -326,7 +325,7 @@ all_peaks_clean_plot <- comb %>%
   ))
 
 # Load ACR annotations.
-acr_annot_file <- file.path(input_dir, "acr_annot.csv")
+acr_annot_file <- file.path(input_dir, "acr_annot.csv") # ATAC-seq peak lifted-over from h19 to hg38 from Human epigenetic and transcriptional T cell differentiation atlas for identifying functional T cell-specific enhancers. Immunity. 2022 Mar 8;55(3):557-574.e7. doi: 10.1016/j.immuni.2022.02.004. PMID: 35263570; PMCID: PMC9214622.)
 acr_annot <- read.csv(acr_annot_file)
 
 # Convert peak and ACR data frames to GRanges objects for genomic interval operations.
