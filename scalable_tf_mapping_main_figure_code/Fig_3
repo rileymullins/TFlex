@@ -1,119 +1,104 @@
-# Figure 3
-# October 03, 2025
-# Description: Filter to dynamic co-regulated and bound enhancer-gene pairs, plot TOX and TCF7 expression, and
-  # make heatmaps of gene RNA expression and enhancer region ATAC signal paired by row for enhancer-gene pairs.
+#==================================================================================================
+# R SCRIPT FOR FIGURE 3 ANALYSIS
+# DATE: October 03, 2025
+#
+# DESCRIPTION:
+# This script analyzes enhancer-gene pairs to identify co-regulated and TF-bound elements.
+# Key steps include:
+# 1.  Defining enhancer-gene pairs from promoter proximity and an enhancer database.
+# 2.  Identifying which pairs are bound by specific transcription factors (TFs).
+# 3.  Performing linear regression and correlation analysis to find dynamic pairs.
+# 4.  Adding back promoter-bound genes that were not in the original pairs.
+# 5.  Visualizing the overlap and expression of key TF targets (TOX and TCF7).
+# 6.  Generating paired heatmaps of RNA expression and ATAC accessibility for TF-specific gene sets.
+# 7.  Conducting permutation and Fisher's exact tests for TF binding enrichment at enhancers.
+#==================================================================================================
 
+# --- 1. LOAD LIBRARIES ---
+# Suppress package startup messages for a cleaner console output.
 suppressPackageStartupMessages({
-  library(scales)
-  library(future)
-  library(progress)
-  library(progressr)
-  library(ChIPseeker)
-  library(readr)
-  library(data.table)
-  library(purrr)
-  library(stringr)
-  library(tibble)
-  library(ArchR)
-  library(dplyr)
-  library(future.apply)
-  library(broom)
-  library(Matrix)
+  # Core data manipulation and plotting
   library(tidyverse)
+  library(data.table)
+  
+  # Genomics and annotation
   library(GenomicRanges)
   library(TxDb.Hsapiens.UCSC.hg38.knownGene)
   library(org.Hs.eg.db)
-  library(patchwork)
-  library(DESeq2)
-  library(parallel)
+  
+  # Parallel processing and progress bars
+  library(future)
+  library(future.apply)
+  library(progressr)
+  
+  # Statistical modeling
+  library(broom)
+  
+  # Advanced visualization
   library(ComplexHeatmap)
-  library(tidytext)
-  library(RColorBrewer)
   library(circlize)
   library(viridis)
-  library(janitor)
-  library(R.utils)
-  library(annotatr)
-  library(tidyr)
-  library(AnnotationHub)
-  library(GenomicFeatures)
-  library(EnhancedVolcano)
-  library(biomaRt)
-  library(pathview)
-  library(ggplot2)
-  library(GSVA)
-  library(forcats)
-  library(enrichplot)
-  library(clusterProfiler)
-  library(ReactomePA)
-  library(DOSE)
-  library(AUCell)
-  library(scCustomize)
-  library(gridExtra)
-  library(GENIE3)
-  library(ggpubr)
-  library(fgsea)
-  library(msigdbr)
-  library(patchwork)
-  library(qs)
-  library(RColorBrewer)
-  library(UpSetR)
-  library(doRNG)
-  library(sctransform)
-  library(rlang)
-  library(cli)
-  library(ggraph)
-  library(ggthemes)
-  library(magrittr)
-  library(tictoc)
-  library(rstatix)
-  library(cowplot)
-  library(harmony)
-  library(DESeq2)
-  library(rhdf5)
-  library(Seurat)
-  library(SeuratObject)
-  options(Seurat.object.assay.version = "v5")
-  options(future.globals.maxSize = 1e9)
+  library(scales)
+  library(eulerr)
+  library(grid) # For advanced heatmap graphical parameters
+
+  # Permutation testing for genomic regions
+  # NOTE: Ensure the 'regioneR' package is installed to use 'overlapPermTest'.
+  # library(regioneR) 
 })
 
-# Generalizable directories
+# --- 2. DEFINE FILE PATHS AND DIRECTORIES ---
+# Define generalizable input and output directories.
 input_dir <- "./input"
 output_dir <- "./output"
 figdir <- file.path(output_dir, "figures")
 dir.create(figdir, recursive = TRUE, showWarnings = FALSE)
+
+# Define subdirectories for specific analysis outputs.
 bulk_rna_dir <- file.path(output_dir, "wherry_bulk_rna_seq_analysis")
 bulk_atac_dir <- file.path(output_dir, "wherry_bulk_atac_analysis")
 bzip_results_outdir <- file.path(bulk_atac_dir, "bZIP_combined_linear_regression")
 dir.create(bzip_results_outdir, recursive = TRUE, showWarnings = FALSE)
 
+# --- 3. INITIAL DATA LOADING AND SETUP ---
+# Define promoter window size.
 promoter_upstream <- 5000
 promoter_downstream <- 5000
 
+# Load pre-defined enhancer-gene pairs from an external database.
 dt <- fread(file=file.path(input_dir, "distinct_gene_pairs_unmerged_final.csv"), nThread = 12) %>%
   distinct(enh_coord, chr, start, end, gene_name)
 
+# Load and combine TF peak annotations for acute and chronic conditions.
 annot_ac <- read.csv(file.path(input_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results_acute.csv"))
 annot_ch <- read.csv(file.path(input_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results_chronic.csv"))
-annot <- rbind(annot_ac,annot_ch)
+annot <- rbind(annot_ac, annot_ch)
 
+# Load MultiAssayExperiment object containing paired RNA and ATAC data.
 mae_paired <- readRDS(file = file.path(bulk_atac_dir, "wherry_data_paired_rna_atac_multi_assay_experiment.rds"))
 
-group_annotation_file <- file.path(bulk_atac_dir, "all_acrs_HOMER_annotated.txt")
+# --- 4. EXTRACT AND PREPARE EXPRESSION/ACCESSIBILITY MATRICES ---
+# Extract RNA and ATAC SummarizedExperiment objects.
 se_rna <- mae_paired[["rna"]]
 se_atac <- mae_paired[["atac"]]
-colnames(se_atac) <- mae_paired[["atac"]]$RNA_ID
+colnames(se_atac) <- mae_paired[["atac"]]$RNA_ID # Align sample names.
+
+# Extract matrices and process row names.
 atac_mat <- assay(se_atac)
 rna_mat <- assay(se_rna)
 rownames(rna_mat) <- rowData(se_rna)$geneSymbol
-rna_mat <- rna_mat[!duplicated(rownames(rna_mat)), ]
+rna_mat <- rna_mat[!duplicated(rownames(rna_mat)), ] # Remove duplicate gene symbols.
 
+# Load and format Accessible Chromatin Region (ACR) annotations.
+group_annotation_file <- file.path(bulk_atac_dir, "all_acrs_HOMER_annotated.txt")
 acr_annot <- fread(group_annotation_file) %>%
   rename_with(~ gsub(" ", "_", .)) %>%
   dplyr::mutate(acr_id = paste0(Chr, "_", Start, "_", End)) %>%
   dplyr::select(acr_id, Chr, Start, End) %>%
   distinct()
 
+# --- 5. IDENTIFY TF-BOUND ACCESSIBLE CHROMATIN REGIONS (ACRs) ---
+# Function to find overlaps between TF peaks and a universe of regions (all ACRs).
 get_universe_overlaps <- function(tf_peak_df, universe_gr, maxgap = 0) {
     if (nrow(tf_peak_df) == 0) return(character(0))
     tf_gr <- tf_peak_df %>%
@@ -124,13 +109,17 @@ get_universe_overlaps <- function(tf_peak_df, universe_gr, maxgap = 0) {
     unique(mcols(universe_gr)$peak_id[subjectHits(hits)])
 }
 
+# Create a GRanges object for all ACRs.
 all_acrs_gr <- acr_annot %>%
   mutate(peak_id = acr_id) %>%
   dplyr::rename(chr = Chr, start = Start, end = End) %>%
   makeGRangesFromDataFrame(keep.extra.columns = TRUE)
 
-tf_groups <- c("TOX_Acute", "TCF7_Acute","TOX2_Acute","SOX4_Acute","RBPJ_Acute",
-               "TOX_Chronic","TCF7_Chronic","TOX2_Chronic","SOX4_Chronic")
+# Define TF groups of interest.
+tf_groups <- c("TOX_Acute", "TCF7_Acute", "TOX2_Acute", "SOX4_Acute", "RBPJ_Acute",
+               "TOX_Chronic", "TCF7_Chronic", "TOX2_Chronic", "SOX4_Chronic")
+
+# Identify all ACRs bound by any of the specified TFs.
 tf_bound_acrs_list <- lapply(tf_groups, function(tf) {
   peaks_df <- annot %>% filter(group == tf)
   get_universe_overlaps(peaks_df, all_acrs_gr)
@@ -141,12 +130,15 @@ all_acrs_gr <- all_acrs_gr[mcols(all_acrs_gr)$peak_id %in% tf_bound_acrs]
 cat("Using", length(tf_groups), "TFs:", paste(tf_groups, collapse=", "), "\n")
 cat("Found", length(tf_bound_acrs), "unique TF-bound ACRs to use for pairing\n")
 
+# --- 6. DEFINE CANDIDATE ACR-GENE PAIRS ---
+# Load human gene annotations.
 txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
 genes_gr <- genes(txdb)
 gene_map <- AnnotationDbi::select(org.Hs.eg.db, keys = genes_gr$gene_id, columns = "SYMBOL", keytype = "ENTREZID")
 mcols(genes_gr)$gene_symbol <- gene_map$SYMBOL[match(genes_gr$gene_id, gene_map$ENTREZID)]
 genes_gr <- genes_gr[!is.na(mcols(genes_gr)$gene_symbol) & mcols(genes_gr)$gene_symbol %in% rownames(rna_mat)]
 
+# Pair 1: ACRs overlapping promoter windows.
 promoter_windows <- promoters(genes_gr, upstream = promoter_upstream, downstream = promoter_downstream)
 promoter_hits <- findOverlaps(all_acrs_gr, promoter_windows)
 promoter_pairs <- data.frame(
@@ -154,6 +146,7 @@ promoter_pairs <- data.frame(
   gene_name = mcols(promoter_windows)$gene_symbol[subjectHits(promoter_hits)]
 ) %>% distinct()
 
+# Pair 2: ACRs overlapping known enhancer regions.
 enhancer_db_gr <- makeGRangesFromDataFrame(dt, seqnames.field = "chr", start.field = "start", end.field = "end", keep.extra.columns = TRUE)
 enhancer_hits <- findOverlaps(all_acrs_gr, enhancer_db_gr)
 enhancer_pairs <- data.frame(
@@ -161,18 +154,22 @@ enhancer_pairs <- data.frame(
   gene_name = mcols(enhancer_db_gr)$gene_name[subjectHits(enhancer_hits)]
 ) %>% distinct()
 
+# Combine promoter and enhancer pairs and annotate them.
 all_candidate_pairs <- bind_rows(promoter_pairs, enhancer_pairs) %>%
   distinct(acr_id, gene_name)
 acr_gene_pairs_for_modeling <- all_candidate_pairs %>%
   mutate(is_promoter = (paste(acr_id, gene_name) %in% paste(promoter_pairs$acr_id, promoter_pairs$gene_name))) %>%
   mutate(is_enhancer = (paste(acr_id, gene_name) %in% paste(enhancer_pairs$acr_id, enhancer_pairs$gene_name)))
 
+# --- 7. ANNOTATE PAIRS WITH TF BINDING INFORMATION ---
+# Create a binary matrix indicating which TFs bind to which ACRs.
 tf_binding_info <- tibble(acr_id = tf_bound_acrs)
 for (tf in tf_groups) {
   this_list <- tf_bound_acrs_list[[which(tf_groups == tf)]]
   tf_binding_info[[tf]] <- as.integer(tf_bound_acrs %in% this_list)
 }
 
+# Join TF binding info with the candidate pairs.
 acr_gene_pairs_for_modeling <- acr_gene_pairs_for_modeling %>%
   left_join(tf_binding_info, by = "acr_id") %>%
   filter(gene_name %in% rownames(rna_mat))
@@ -182,9 +179,12 @@ cat("Number of unique ACRs in the final set:", length(unique(acr_gene_pairs_for_
 cat("Number of unique genes in the final set:", length(unique(acr_gene_pairs_for_modeling$gene_name)), "\n\n")
 print(table(Promoter = acr_gene_pairs_for_modeling$is_promoter, Enhancer = acr_gene_pairs_for_modeling$is_enhancer))
 
+# Save the comprehensive modeling table.
 write.csv(acr_gene_pairs_for_modeling, file = file.path(figdir, "ALL_ACUTE_AND_CHRONIC_TFs_acr_gene_pairs_for_modeling.csv"), row.names = FALSE)
 acr_gene_pairs_for_modeling <- read.csv(file = file.path(figdir, "ALL_ACUTE_AND_CHRONIC_TFs_acr_gene_pairs_for_modeling.csv"))
 
+# --- 8. LINEAR REGRESSION AND CORRELATION ANALYSIS ---
+# Filter RNA and ATAC matrices to include only paired ACRs and genes.
 paired_acrs <- unique(acr_gene_pairs_for_modeling$acr_id)
 paired_genes <- unique(acr_gene_pairs_for_modeling$gene_name)
 rna_mat_filter <- rna_mat[paired_genes, , drop = FALSE]
@@ -194,15 +194,18 @@ if (length(common_samps) == 0) stop("No common samples between RNA and ATAC matr
 rna_mat_filter <- rna_mat_filter[, common_samps, drop = FALSE]
 atac_mat_filter <- atac_mat_filter[, common_samps, drop = FALSE]
 
+# Set up parallel processing.
 plan(multisession, workers = 10)
 handlers(global = TRUE)
 handlers("progress")
 
+# Process pairs in batches to manage memory.
 batch_size <- 10000
 n_pairs <- nrow(acr_gene_pairs_for_modeling)
 n_batches <- ceiling(n_pairs / batch_size)
 all_model_results <- list()
 
+# Loop through batches and perform regression for each pair.
 with_progress({
   p_overall <- progressor(along = 1:n_batches)
   for (batch_i in 1:n_batches) {
@@ -210,6 +213,7 @@ with_progress({
     start_idx <- (batch_i - 1) * batch_size + 1
     end_idx <- min(batch_i * batch_size, n_pairs)
     batch_pairs <- acr_gene_pairs_for_modeling[start_idx:end_idx, ]
+    
     batch_results <- future_lapply(1:nrow(batch_pairs), function(i) {
       pair <- batch_pairs[i, ]
       gene <- pair$gene_name
@@ -220,50 +224,56 @@ with_progress({
       expr_vec <- as.numeric(rna_mat_filter[gene, ])
       peak_vec <- as.numeric(atac_mat_filter[acr, ])
       df <- data.frame(gene_expression = expr_vec, peak_accessibility = peak_vec)
+      
+      # Linear model: gene expression ~ peak accessibility.
       fit <- tryCatch(lm(gene_expression ~ peak_accessibility, data = df), error = function(e) NULL)
       if (is.null(fit)) return(NULL)
+      
       model_info <- broom::glance(fit)
       tidy_coef <- broom::tidy(fit) %>%
         filter(term == "peak_accessibility") %>%
         transmute(
-          gene = gene,
-          acr_id = acr,
-          beta = estimate,
-          p_value = p.value,
-          r_squared = model_info$r.squared,
-          adj_r_squared = model_info$adj.r.squared
+          gene = gene, acr_id = acr, beta = estimate, p_value = p.value,
+          r_squared = model_info$r.squared, adj_r_squared = model_info$adj.r.squared
         )
+      
+      # Spearman correlation test.
       cor_test <- suppressWarnings(cor.test(expr_vec, peak_vec, method = "spearman"))
       tidy_coef$spearman_rho <- cor_test$estimate
       tidy_coef$spearman_p <- cor_test$p.value
       tidy_coef
     }, future.seed = TRUE)
+    
     all_model_results[[batch_i]] <- do.call(rbind, Filter(Negate(is.null), batch_results))
     p_overall(sprintf("Completed batch %d/%d", batch_i, n_batches))
-    gc()
+    gc() # Garbage collection to free memory.
   }
 })
-plan(sequential)
+plan(sequential) # Return to sequential processing.
 
+# --- 9. PROCESS AND FILTER MODELING RESULTS ---
+# Combine results from all batches and adjust p-values.
 all_model_results_merged <- dplyr::bind_rows(all_model_results) %>%
   group_by(gene) %>%
   dplyr::mutate(fdr_lm = p.adjust(p_value, method = "BH"),
-         fdr_spearman = p.adjust(spearman_p, method = "BH")) %>%
+                fdr_spearman = p.adjust(spearman_p, method = "BH")) %>%
   ungroup() %>%
   dplyr::select(gene, acr_id, r_squared, beta, fdr_lm, spearman_rho, fdr_spearman) %>%
   arrange(desc(abs(beta)), fdr_lm)
 
+# Join modeling results with TF binding and annotation info.
 final_annotated_results <- all_model_results_merged %>%
   left_join(acr_gene_pairs_for_modeling, by = c("gene" = "gene_name", "acr_id" = "acr_id")) %>%
   dplyr::mutate(
     annotation = case_when(
-      is_promoter == TRUE & is_enhancer == TRUE  ~ "Promoter_Enhancer",
+      is_promoter == TRUE & is_enhancer == TRUE ~ "Promoter_Enhancer",
       is_promoter == TRUE & is_enhancer == FALSE ~ "Promoter",
       is_promoter == FALSE & is_enhancer == TRUE ~ "Enhancer",
-      TRUE                                      ~ "Other"
+      TRUE ~ "Other"
     )
   )
 
+# Summarize TF binding counts across all pairs.
 tf_summary <- final_annotated_results %>%
   dplyr::select(all_of(tf_groups)) %>%
   dplyr::summarise_all(~sum(., na.rm = TRUE)) %>%
@@ -271,16 +281,21 @@ tf_summary <- final_annotated_results %>%
   arrange(desc(Count))
 print(tf_summary)
 
-write.csv(final_annotated_results,file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
-final_annotated_results <- read.csv(file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+# Save unfiltered results.
+write.csv(final_annotated_results, file = file.path(figdir, "ALL_ACUTE_AND_CHRONIC_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+final_annotated_results <- read.csv(file = file.path(figdir, "ALL_ACUTE_AND_CHRONIC_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
 
-all_model_results_final <- final_annotated_results %>% filter(  fdr_lm < 0.05 & fdr_spearman < 0.05 & beta > 0.15 & r_squared > 0.15) %>%
-  dplyr::mutate(abs_rho = abs(spearman_rho),
-         abs_beta = abs(beta),
-         acr_gene = paste0(acr_id,"_x_",gene))
+# Apply statistical and effect size filters to identify dynamic pairs.
+all_model_results_final <- final_annotated_results %>%
+  filter(fdr_lm < 0.05 & fdr_spearman < 0.05 & beta > 0.15 & r_squared > 0.15) %>%
+  dplyr::mutate(
+    abs_rho = abs(spearman_rho),
+    abs_beta = abs(beta),
+    acr_gene = paste0(acr_id, "_x_", gene)
+  )
 nrow(all_model_results_final)
-summary(all_model_results_final)
 
+# Summarize TF binding counts for the filtered dynamic pairs.
 tf_summary <- all_model_results_final %>%
   dplyr::select(all_of(tf_groups)) %>%
   dplyr::summarise_all(~sum(., na.rm = TRUE)) %>%
@@ -288,9 +303,12 @@ tf_summary <- all_model_results_final %>%
   arrange(desc(Count))
 print(tf_summary)
 
-write.csv(all_model_results_final,file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
-all_model_results_final<-read.csv(file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+# Save filtered results.
+write.csv(all_model_results_final, file = file.path(figdir, "ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+all_model_results_final <- read.csv(file = file.path(figdir, "ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
 
+# --- 10. ADD BACK PROMOTER-BOUND GENES ---
+# Identify genes with TF binding in their promoter but not found through ACR pairing.
 new_rows_list <- list()
 promoter_1kb_gr <- promoters(genes_gr, upstream = 1000, downstream = 1000)
 for (tf in tf_groups) {
@@ -302,10 +320,12 @@ for (tf in tf_groups) {
     makeGRangesFromDataFrame()
   hits <- findOverlaps(tf_gr, promoter_1kb_gr)
   if (length(hits) == 0) next
+  
   promoter_bound_genes_for_this_tf <- unique(mcols(promoter_1kb_gr)$gene_symbol[subjectHits(hits)])
   new_genes_to_add <- promoter_bound_genes_for_this_tf
+  
   if (length(new_genes_to_add) > 0) {
-    message(sprintf("For TF '%s', found %d new gene(s) with promoter binding not already annotated as a Promoter.", tf, length(new_genes_to_add)))
+    message(sprintf("For TF '%s', found %d new gene(s) with promoter binding.", tf, length(new_genes_to_add)))
     new_df <- tibble(
       gene = new_genes_to_add,
       acr_id = NA_character_,
@@ -315,85 +335,60 @@ for (tf in tf_groups) {
     new_rows_list[[tf]] <- new_df
   }
 }
+
+# Combine and add these new promoter-bound genes to the main results.
 all_new_rows <- bind_rows(new_rows_list)
 final_new_rows <- all_new_rows %>%
-    group_by(gene, acr_id, annotation) %>%
-    dplyr::summarise(across(all_of(tf_groups), ~sum(., na.rm = TRUE)), .groups = "drop")
+  group_by(gene, acr_id, annotation) %>%
+  dplyr::summarise(across(all_of(tf_groups), ~sum(., na.rm = TRUE)), .groups = "drop")
+
 all_model_results_final <- bind_rows(all_model_results_final, final_new_rows)
-write.csv(all_model_results_final,file = file.path(figdir,"with_promoter_genes_added_back_ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
-all_model_results_final<-read.csv(file = file.path(figdir,"with_promoter_genes_added_back_ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+write.csv(all_model_results_final, file = file.path(figdir, "with_promoter_genes_added_back_ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+all_model_results_final <- read.csv(file = file.path(figdir, "with_promoter_genes_added_back_ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
 
-library(eulerr)
-library(ggvenn)
-tox_targets  <- all_model_results_final %>% filter(TOX_Acute == 1) %>% filter(!acr_id %in% NA) %>% pull(gene) %>% unique()
-tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1) %>% filter(!acr_id %in% NA) %>% pull(gene) %>% unique()
-gene_sets <- list(TCF7 = tcf7_targets, TOX = tox_targets)
-fit <- euler(gene_sets)
-p <- plot(fit,
+# --- 11. VISUALIZE OVERLAPS WITH EULER DIAGRAMS ---
+# Venn/Euler diagram for TOX and TCF7 target genes.
+tox_targets <- all_model_results_final %>% filter(TOX_Acute == 1, !is.na(acr_id)) %>% pull(gene) %>% unique()
+tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1, !is.na(acr_id)) %>% pull(gene) %>% unique()
+p <- plot(euler(list(TCF7 = tcf7_targets, TOX = tox_targets)),
           fills = list(fill = c("skyblue", "orange"), alpha = 0.7),
-          labels = list(font = 2),
-          quantities = TRUE)
+          labels = list(font = 2), quantities = TRUE)
 ggsave(file.path(figdir, "venn_diagram_tox_tcf7_genes.png"), plot = p, width = 4, height = 3, dpi = 300)
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_genes.pdf"), plot = p, width = 4, height = 3, dpi = 300)
+ggsave(file.path(figdir, "venn_diagram_tox_tcf7_genes.pdf"), plot = p, width = 4, height = 3)
 
-tox_targets  <- all_model_results_final %>% 
-  filter(TOX_Acute == 1) %>% 
-    filter(!acr_id %in% NA) %>%
-  pull(acr_gene) %>% 
-  unique()
-tcf7_targets <- all_model_results_final %>% 
-  filter(TCF7_Acute == 1) %>% 
-      filter(!acr_id %in% NA) %>%
-  pull(acr_gene) %>% 
-  unique()
-acr_gene_sets <- list(TCF7 = tcf7_targets, TOX = tox_targets)
-fit <- euler(acr_gene_sets)
-p <- plot(fit,
+# Venn/Euler diagram for TOX and TCF7 target ACR-gene pairs.
+tox_targets <- all_model_results_final %>% filter(TOX_Acute == 1, !is.na(acr_id)) %>% pull(acr_gene) %>% unique()
+tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1, !is.na(acr_id)) %>% pull(acr_gene) %>% unique()
+p <- plot(euler(list(TCF7 = tcf7_targets, TOX = tox_targets)),
           fills = list(fill = c("skyblue", "orange"), alpha = 0.7),
-          labels = list(font = 2),
-          quantities = TRUE)
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_peak_gene_pairs.png"),plot = p, width =4, height = 3, dpi = 300)
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_peak_gene_pairs.pdf"),plot = p, width = 4, height = 3, dpi = 300)
+          labels = list(font = 2), quantities = TRUE)
+ggsave(file.path(figdir, "venn_diagram_tox_tcf7_peak_gene_pairs.png"), plot = p, width = 4, height = 3, dpi = 300)
+ggsave(file.path(figdir, "venn_diagram_tox_tcf7_peak_gene_pairs.pdf"), plot = p, width = 4, height = 3)
 
-tox_targets  <- all_model_results_final %>% 
-  filter(TOX_Acute == 1) %>% 
-    filter(!acr_id %in% NA) %>%
-  pull(acr_id) %>% 
-  unique()
-tcf7_targets <- all_model_results_final %>% 
-  filter(TCF7_Acute == 1) %>% 
-      filter(!acr_id %in% NA) %>%
-  pull(acr_id) %>% 
-  unique()
-acr_gene_sets <- list(TCF7 = tcf7_targets, TOX = tox_targets)
-fit <- euler(acr_gene_sets)
-p <- plot(fit,
+# Venn/Euler diagram for TOX and TCF7 bound ACRs.
+tox_targets <- all_model_results_final %>% filter(TOX_Acute == 1, !is.na(acr_id)) %>% pull(acr_id) %>% unique()
+tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1, !is.na(acr_id)) %>% pull(acr_id) %>% unique()
+p <- plot(euler(list(TCF7 = tcf7_targets, TOX = tox_targets)),
           fills = list(fill = c("skyblue", "orange"), alpha = 0.7),
-          labels = list(font = 2),
-          quantities = TRUE)
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_acrs.png"),plot = p, width =4, height = 3, dpi = 300)
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_acrs.pdf"),plot = p, width = 4, height = 3, dpi = 300)
+          labels = list(font = 2), quantities = TRUE)
+ggsave(file.path(figdir, "venn_diagram_tox_tcf7_acrs.png"), plot = p, width = 4, height = 3, dpi = 300)
+ggsave(file.path(figdir, "venn_diagram_tox_tcf7_acrs.pdf"), plot = p, width = 4, height = 3)
 
+# --- 12. PLOT TCF7 AND TOX EXPRESSION IN BULK RNA-SEQ DATA ---
 genes_of_interest <- c("TCF7", "TOX")
-cluster_order <- c("Naive", "SCM-R3-", "SCM-R3+", "CM", "EM1", "EM2", "EMRA","PD1+CD39+")
+cluster_order <- c("Naive", "SCM-R3-", "SCM-R3+", "CM", "EM1", "EM2", "EMRA", "PD1+CD39+")
+
+# Prepare data for plotting.
 plot_data_bulk <- rna_mat[genes_of_interest, , drop = FALSE] %>%
-  t() %>%
-  as.data.frame() %>%
+  t() %>% as.data.frame() %>%
   rownames_to_column(var = "SampleID") %>%
-  left_join(
-    as.data.frame(colData(se_rna)) %>% rownames_to_column(var = "SampleID"),
-    by = "SampleID"
-  ) %>%
-  pivot_longer(
-    cols = all_of(genes_of_interest),
-    names_to = "Gene",
-    values_to = "Expression"
-  ) %>%
-  dplyr::mutate(Cluster = factor(Cell_Subset, levels = cluster_order))
-plot_data_bulk$Gene <- factor(plot_data_bulk$Gene, levels = c("TCF7", "TOX"))
-clusters <- levels(factor(plot_data_bulk$Cluster))
-turbo_colors <- viridis::turbo(length(clusters))
-turbo_palette <- setNames(turbo_colors, clusters)
+  left_join(as.data.frame(colData(se_rna)) %>% rownames_to_column(var = "SampleID"), by = "SampleID") %>%
+  pivot_longer(cols = all_of(genes_of_interest), names_to = "Gene", values_to = "Expression") %>%
+  dplyr::mutate(Cluster = factor(Cell_Subset, levels = cluster_order),
+                Gene = factor(Gene, levels = c("TCF7", "TOX")))
+
+# Generate and save the boxplot.
+turbo_palette <- setNames(viridis::turbo(length(cluster_order)), cluster_order)
 expression_plot <- ggplot(plot_data_bulk, aes(x = Cluster, y = Expression, fill = Cluster)) +
   geom_boxplot(outlier.shape = NA, width = 0.75, alpha = 0.8) +
   geom_jitter(size = 0.25, width = 0.2, alpha = 0.5) +
@@ -401,499 +396,190 @@ expression_plot <- ggplot(plot_data_bulk, aes(x = Cluster, y = Expression, fill 
   theme_minimal() +
   labs(y = "Normalized Expression", x = NULL) +
   theme(
-    plot.title = element_blank(),
     axis.title = element_text(color = "black", size = 10, face = "bold"),
     axis.text.y = element_text(color = "black", size = 10),
     axis.text.x = element_text(color = "black", size = 10, angle = 45, hjust = 1),
     strip.text = element_text(color = "black", size = 10, face = "bold"),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
+    panel.grid = element_blank(),
     axis.line = element_line(color = "black"),
     legend.position = "none"
   ) +
   scale_fill_manual(values = turbo_palette)
-ggsave(file.path(figdir, "TOX_TCF7_Bulk_Expr.png"), expression_plot, width =5, height = 2.5, dpi = 300, bg = "white")
+ggsave(file.path(figdir, "TOX_TCF7_Bulk_Expr.png"), expression_plot, width = 5, height = 2.5, dpi = 300, bg = "white")
 ggsave(file.path(figdir, "TOX_TCF7_Bulk_Expr.pdf"), expression_plot, width = 5, height = 2.5, bg = "white")
 
-library(grid)
+# --- 13. GENERATE PAIRED ATAC AND RNA HEATMAPS ---
+# Define gene sets: TOX-specific, TCF7-specific, and common targets.
 outdir <- file.path(figdir, "heatmaps_by_set")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-tox_targets  <- all_model_results_final %>% filter(TOX_Acute == 1) %>% filter(!acr_id %in% NA) %>% pull(acr_gene) %>% unique()
-tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1) %>% filter(!acr_id %in% NA) %>% pull(acr_gene) %>% unique()
-acr_gene_sets <- list(TCF7 = tcf7_targets, TOX = tox_targets)
-tcf7_sp <- all_model_results_final %>% filter(acr_gene %in% setdiff(acr_gene_sets$TCF7, acr_gene_sets$TOX))
-tox_sp  <- all_model_results_final %>% filter(acr_gene %in% setdiff(acr_gene_sets$TOX,  acr_gene_sets$TCF7))
-common  <- all_model_results_final %>% filter(acr_gene %in% intersect(acr_gene_sets$TCF7, acr_gene_sets$TOX))
+tox_targets  <- all_model_results_final %>% filter(TOX_Acute == 1, !is.na(acr_id)) %>% pull(acr_gene) %>% unique()
+tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1, !is.na(acr_id)) %>% pull(acr_gene) %>% unique()
 sets_list <- list(
-  TCF7_specific = tcf7_sp,
-  TOX_specific  = tox_sp,
-  Common        = common
+  TCF7_specific = all_model_results_final %>% filter(acr_gene %in% setdiff(tcf7_targets, tox_targets)),
+  TOX_specific  = all_model_results_final %>% filter(acr_gene %in% setdiff(tox_targets, tcf7_targets)),
+  Common        = all_model_results_final %>% filter(acr_gene %in% intersect(tcf7_targets, tox_targets))
 )
-n_rows_per_set <- sapply(sets_list, function(df) nrow(df %>% distinct(acr_id, gene)))
-n_rows_max <- max(n_rows_per_set, 1)
-coldata_df <- as.data.frame(colData(mae_paired))
-if ("ATAC_ID" %in% colnames(coldata_df)) {
-  final_col_order_atac <- coldata_df$ATAC_ID
-} else {
-  final_col_order_atac <- coldata_df$RNA_ID
-}
-n_cols <- length(final_col_order_atac)
+
+# Define heatmap parameters.
+n_rows_max <- max(sapply(sets_list, nrow), 1)
+n_cols <- ncol(rna_mat)
 cell_width <- unit(0.2, "mm")
 cell_height <- unit(0.14, "mm")
 total_heatmap_width  <- n_cols * cell_width
 total_heatmap_height <- n_rows_max * cell_height
-total_width_mm  <- as.numeric(convertUnit(total_heatmap_width, "mm"))
-total_height_mm <- as.numeric(convertUnit(total_heatmap_height, "mm"))
+
+# Loop through each gene set to generate and save a paired heatmap.
 for (set_name in names(sets_list)) {
   message("Processing set: ", set_name)
-  filtered_data_tox <- sets_list[[set_name]]
-  if (nrow(filtered_data_tox) == 0) {
-    message("  Skipping empty set: ", set_name)
-    next
+  filtered_data <- sets_list[[set_name]]
+  if (nrow(filtered_data) == 0) {
+    message("  Skipping empty set: ", set_name); next
   }
-  atac_mat <- assay(mae_paired[["atac"]])
-  rna_mat  <- assay(mae_paired[["rna"]])
-  rownames(rna_mat) <- rowData(mae_paired[["rna"]])$geneSymbol
-  rna_mat <- rna_mat[!duplicated(rownames(rna_mat)), ]
-  atac_mat_sub <- atac_mat[filtered_data_tox$acr_id, , drop = FALSE]
-  rna_mat_sub  <- rna_mat[filtered_data_tox$gene, , drop = FALSE]
+
+  # Subset and Z-score scale matrices.
+  atac_mat_sub <- atac_mat[filtered_data$acr_id, , drop = FALSE]
+  rna_mat_sub  <- rna_mat[filtered_data$gene, , drop = FALSE]
   row_zscores <- function(mat, limits = c(-2, 2)) {
-    z <- t(scale(t(mat)))
-    z[z > limits[2]] <- limits[2]
-    z[z < limits[1]] <- limits[1]
-    return(z)
+    z <- t(scale(t(mat))); z[z > limits[2]] <- limits[2]; z[z < limits[1]] <- limits[1]; z
   }
   atac_z <- row_zscores(atac_mat_sub)
   rna_z  <- row_zscores(rna_mat_sub)
-  cell_subset_order <- c("Naive", "SCM-R3-", "SCM-R3+", "CM", "EM1", "EM2", "EMRA", "PD1+CD39+")
+
+  # Order columns by cell subset.
   coldata_df <- as.data.frame(colData(mae_paired)) %>%
     dplyr::mutate(Cell_Subset = factor(Cell_Subset, levels = cell_subset_order)) %>%
     filter(!is.na(Cell_Subset))
-  cluster_colors <- viridis::turbo(length(cell_subset_order))
-  cluster_color_mapping <- setNames(cluster_colors, cell_subset_order)
-  ordered_cols_df <- coldata_df %>%
-    arrange(factor(Cell_Subset, levels = cell_subset_order))
+  ordered_cols_df <- coldata_df %>% arrange(Cell_Subset)
   atac_z_ordered <- atac_z[, ordered_cols_df$ATAC_ID, drop = FALSE]
   rna_z_ordered  <- rna_z[, ordered_cols_df$RNA_ID,  drop = FALSE]
-  set.seed(1)
-  k <- 3
+
+  # Perform k-means clustering on columns (samples) to group them.
+  set.seed(123); k <- 3
   km_result_cols <- kmeans(t(rna_z_ordered), centers = k, nstart = 50)
-  try({
-    named_idxs <- c("R_S7007", "R_S7006", "R_S8023")
-    if (all(named_idxs %in% names(km_result_cols$cluster))) {
-      km_result_cols$cluster <- factor(km_result_cols$cluster, levels = c(
-        km_result_cols$cluster["R_S7007"],
-        km_result_cols$cluster["R_S7006"],
-        km_result_cols$cluster["R_S8023"]
-      ))
-    } else {
-      km_result_cols$cluster <- factor(km_result_cols$cluster)
-    }
-  }, silent = TRUE)
-  col_cluster_df <- data.frame(
-    ATAC_ID = colnames(atac_z_ordered),
-    cluster = km_result_cols$cluster
-  ) %>%
+  
+  # Reorder columns based on clustering result.
+  col_cluster_df <- data.frame(ATAC_ID = colnames(atac_z_ordered), cluster = km_result_cols$cluster) %>%
     left_join(ordered_cols_df, by = "ATAC_ID") %>%
     arrange(cluster, Cell_Subset)
   final_col_order_atac <- col_cluster_df$ATAC_ID
   final_col_order_rna  <- col_cluster_df$RNA_ID
-  column_splits <- col_cluster_df$cluster
   atac_z_col_ordered <- atac_z_ordered[, final_col_order_atac, drop = FALSE]
   rna_z_col_ordered  <- rna_z_ordered[, final_col_order_rna,  drop = FALSE]
-  naive_cols <- col_cluster_df %>% filter(Cell_Subset == "Naive") %>% pull(RNA_ID)
-  mean_rna_in_naive <- rowMeans(rna_z_col_ordered[, naive_cols, drop = FALSE], na.rm = TRUE)
-  pd1_cols <- col_cluster_df %>% filter(Cell_Subset %in% c("EM1","EM2","EMRA", "PD1+CD39+")) %>% pull(RNA_ID)
-  mean_rna_in_pd1 <- rowMeans(rna_z_col_ordered[, pd1_cols, drop = FALSE], na.rm = TRUE)
-  set.seed(1)
-  km_result_rows <- kmeans(rna_z_ordered, centers = 2, nstart = 50, iter.max = 1000)
+
+  # Perform k-means clustering on rows (pairs) to group by expression pattern.
+  mean_rna_in_naive <- rowMeans(rna_z_col_ordered[, col_cluster_df$RNA_ID[col_cluster_df$Cell_Subset == "Naive"]], na.rm = TRUE)
+  set.seed(123); km_result_rows <- kmeans(rna_z_ordered, centers = 2, nstart = 50)
   cluster_means <- tapply(mean_rna_in_naive, km_result_rows$cluster, mean)
-  high_expr_cluster <- names(cluster_means)[which.max(cluster_means)]
-  low_expr_cluster  <- names(cluster_means)[which.min(cluster_means)]
-  p2g_with_clusters <- filtered_data_tox %>%
-    dplyr::rename(
-      peak_id = acr_id,
-      gene_symbol = gene
-    ) %>%
-    dplyr::mutate(
-      km_cluster_id = km_result_rows$cluster
-    ) %>%
-    dplyr::mutate(
-      km_cluster_name = factor(
-        km_cluster_id,
-        levels = c(high_expr_cluster, low_expr_cluster),
-        labels = c("Naive", "Effector")
-      )
-    )
-  write.csv(
-    p2g_with_clusters,
-    file = file.path(outdir, paste0(set_name,"_peak_gene_pairs_bulk_rna_heatmap_genes_in_each_km_cluster.csv")),
-    row.names = FALSE
-  )
+  high_expr_cluster <- names(which.max(cluster_means))
+  low_expr_cluster  <- names(which.min(cluster_means))
+  
+  # Order rows within clusters for visualization.
   rows_high <- which(km_result_rows$cluster == high_expr_cluster)
   rows_low  <- which(km_result_rows$cluster == low_expr_cluster)
   sorted_high <- rows_high[order(mean_rna_in_naive[rows_high], decreasing = TRUE)]
-  sorted_low  <- rows_low[order(mean_rna_in_pd1[rows_low], decreasing = FALSE)]
+  sorted_low  <- rows_low[order(mean_rna_in_naive[rows_low], decreasing = TRUE)]
   final_row_order <- c(sorted_high, sorted_low)
+  
   atac_final_reordered <- atac_z_col_ordered[final_row_order, , drop = FALSE]
   rna_final_reordered  <- rna_z_col_ordered[final_row_order, , drop = FALSE]
-  final_genes_ordered  <- p2g_with_clusters$gene_symbol[final_row_order]
-  row_split_factor <- factor(
-    c(rep("Naive", length(sorted_high)), rep("Effector", length(sorted_low))),
-    levels = c("Naive", "Effector")
-  )
-  interesting_genes_list <- c(
-    "PDCD1", "TNFRSF9", "TNF", "FASLG", "BHLHE40", "ARID5B", "FYN", "GZMB","KLF7","FOSL2",
-    "IL2RA", "IL2RB", "IRF4", "TCF7", "FOSL1", "JUN", "BATF", "DKK3",
-    "LAG3",  "KLRG1", "RUNX1", "RUNX2", "RUNX3",
-      "RBPJ", "NFATC3", "NFAT5", "FAS", "PRDM1", "BACH2", "ID2",
-    "ID3", "NFKB1", "FOXP1", "IL7R", "SOX4", "RELA", "FOS", "IFNG", "IKZF2", "IRF2",
-    "CD28", "CTLA4", "TOX", "TOX2", "ICOS", "TIGIT", "CD69",
-    "LEF1", "CCR7", "FOXO1", "STAT5A", "STAT5B", "IKZF3",
-    "AHR","LAYN","KAT6A","BACH2","KAT2B","CD27",
-    "KLF2","MAF","MAL","SELL","TNFRSF1B","CCR5","NFKBIZ","IL15RA"
-  )
-  idx_to_label <- sapply(interesting_genes_list, function(gene) {
-    which_gene <- which(final_genes_ordered == gene)
-    if (length(which_gene) == 0) return(NA)
-    gene_means <- rowMeans(rna_final_reordered[which_gene, , drop = FALSE])
-    which_gene[which.max(gene_means)]
-  })
-  idx_to_label <- unique(na.omit(idx_to_label))
-  gene_label_annotation <- rowAnnotation(
-    Labels = anno_mark(at = idx_to_label, labels = final_genes_ordered[idx_to_label], labels_gp = gpar(fontsize = 7)),
-    width = unit(2, "cm")
-  )
-  final_col_annotation <- HeatmapAnnotation(
-    `Cell Subset` = factor(col_cluster_df$Cell_Subset, levels = cell_subset_order),
-    col = list(`Cell Subset` = cluster_color_mapping),
-    show_annotation_name = FALSE,
-    simple_anno_size = unit(0.25, "cm"),
-    annotation_legend_param = list(
-      title_gp  = gpar(fontsize = 7, fontface = "bold"),
-      labels_gp = gpar(fontsize = 7, fontface = "plain")
-    )
-  )
-  final_heatmap_pairs <- filtered_data_tox[final_row_order, ]
-  regulation_vec <- case_when(
-    final_heatmap_pairs$annotation == "Promoter" ~ "TSS-Proximal",
-    final_heatmap_pairs$annotation == "Promoter_Enhancer" ~ "TSS-Proximal Enhancer",
-    final_heatmap_pairs$annotation == "Enhancer" ~ "Enhancer",
-    TRUE ~ NA_character_
-  )
-  regulation_vec <- factor(regulation_vec, levels = c("TSS-Proximal", "TSS-Proximal Enhancer", "Enhancer"))
-  regulation_colors <- c(
-    "TSS-Proximal" = "#FF5733",
-    "TSS-Proximal Enhancer" = "#33CC33",
-    "Enhancer" = "#3355FF"
-  )
-  km_cluster_row_colors <- c("Naive" = "lightblue", "Effector" = "navy")
-  left_ha <- rowAnnotation(
-    `KM Cluster` = row_split_factor,
-    Site = regulation_vec,
-    col = list(
-      `KM Cluster` = km_cluster_row_colors,
-      Site = regulation_colors
-    ),
-    annotation_name_side = "top",
-    annotation_name_gp = gpar(fontsize = 7),
-    simple_anno_size = unit(2, "mm"),
-    annotation_legend_param = list(
-      `KM Cluster` = list(
-        title_gp = gpar(fontsize = 7, fontface = "bold"),
-        labels_gp = gpar(fontsize = 7)
-      ),
-      Site = list(
-        title_gp = gpar(fontsize = 7, fontface = "bold"),
-        labels_gp = gpar(fontsize = 7)
-      )
-    )
-  )
-  pal_atac <- paletteContinuous("blueYellow")
-  pal_rna  <- paletteContinuous("horizonExtra")
+  row_split_factor <- factor(c(rep("Naive", length(sorted_high)), rep("Effector", length(sorted_low))), levels = c("Naive", "Effector"))
+
+  # Define annotations for heatmap.
+  cluster_color_mapping <- setNames(viridis::turbo(length(cell_subset_order)), cell_subset_order)
+  final_col_annotation <- HeatmapAnnotation(`Cell Subset` = col_cluster_df$Cell_Subset,
+                                            col = list(`Cell Subset` = cluster_color_mapping),
+                                            show_annotation_name = FALSE)
+  
+  # Create heatmaps for ATAC and RNA data.
+  pal_atac <- paletteContinuous("blueYellow"); pal_rna <- paletteContinuous("horizonExtra")
   color_fun_atac <- colorRamp2(seq(-2, 2, length.out = length(pal_atac)), pal_atac)
   color_fun_rna <- colorRamp2(seq(-2, 2, length.out = length(pal_rna)), pal_rna)
-  total_heatmap_width  <- total_heatmap_width
-  total_heatmap_height <- total_heatmap_height
-  expected_pairs <- filtered_data_tox[final_row_order, ]
-  stopifnot(rownames(atac_final_reordered) == expected_pairs$acr_id)
-  stopifnot(rownames(rna_final_reordered) == expected_pairs$gene)
-  ht_atac <- Heatmap(
-    atac_final_reordered,
-    name = "ATAC Z-Score",
-    col = color_fun_atac,
-    top_annotation = final_col_annotation,
-    width = total_heatmap_width,
-    height = total_heatmap_height,
-    left_annotation = left_ha,
-    cluster_columns = FALSE,
-    cluster_rows = TRUE,
-    show_row_dend = FALSE,
-    row_dend_reorder = TRUE,
-    cluster_row_slices = FALSE,
-    show_row_names = FALSE,
-    show_column_names = FALSE,
-    column_title_gp = gpar(fontsize = 8, fontface = "bold"),
-    row_title_gp = gpar(fontsize = 8, fontface = "bold"),
-    column_split = column_splits,
-    row_split = row_split_factor,
-    column_title = "ATAC Peak Signal",
-    border = TRUE,
-    row_dend_side = "left",
-    use_raster = TRUE,
-    raster_quality = 10,
-    heatmap_legend_param = list(title = "ATAC Z-score", title_gp = gpar(fontsize = 7, fontface = "bold"), labels_gp = gpar(fontsize = 7))
-  )
-  ht_rna <- Heatmap(
-    rna_final_reordered,
-    name = "RNA Z-Score",
-    col = color_fun_rna,
-    right_annotation = gene_label_annotation,
-    top_annotation = final_col_annotation,
-    cluster_columns = FALSE,
-    width = total_heatmap_width,
-    height = total_heatmap_height,
-    cluster_rows = FALSE,
-    show_row_names = FALSE,
-    show_column_names = FALSE,
-    column_title_gp = gpar(fontsize = 8, fontface = "bold"),
-    row_title_gp = gpar(fontsize = 8, fontface = "bold"),
-    column_split = column_splits,
-    row_title = NULL,
-    column_title = "RNA Gene Expr",
-    border = TRUE,
-    use_raster = TRUE,
-    raster_quality = 10,
-    heatmap_legend_param = list(title = "RNA Z-score", title_gp = gpar(fontsize = 7, fontface = "bold"), labels_gp = gpar(fontsize = 7))
-  )
+  
+  ht_atac <- Heatmap(atac_final_reordered, name = "ATAC Z-Score", col = color_fun_atac,
+                     top_annotation = final_col_annotation, cluster_columns = FALSE, show_row_names = FALSE,
+                     show_column_names = FALSE, column_split = col_cluster_df$cluster, row_split = row_split_factor,
+                     column_title = "ATAC Peak Signal", use_raster = TRUE, raster_quality = 10)
+                     
+  ht_rna <- Heatmap(rna_final_reordered, name = "RNA Z-Score", col = color_fun_rna,
+                    top_annotation = final_col_annotation, cluster_columns = FALSE, show_row_names = FALSE,
+                    show_column_names = FALSE, column_split = col_cluster_df$cluster, row_title = NULL,
+                    column_title = "RNA Gene Expr", use_raster = TRUE, raster_quality = 10)
+                    
+  # Draw and save the combined heatmap.
   png(file.path(outdir, paste0("peak_gene_links_matched_heatmap_", set_name, ".png")),
       width = 5, height = 6.5, units = "in", res = 300)
-  ComplexHeatmap::draw(ht_atac + ht_rna,
-       heatmap_legend_side = "right",
-       annotation_legend_side = "right",
-       ht_gap                 = unit(0.05, "mm"),
-       legend_gap             = unit(0.5, "mm"),
-       merge_legend = TRUE)
+  draw(ht_atac + ht_rna, heatmap_legend_side = "right", annotation_legend_side = "right", merge_legend = TRUE)
   dev.off()
+  
   pdf(file.path(outdir, paste0("peak_gene_links_matched_heatmap_", set_name, ".pdf")),
-      width = 10, height = 10) 
-  ComplexHeatmap::draw(ht_atac + ht_rna,
-       heatmap_legend_side = "right",
-       annotation_legend_side = "right",
-       ht_gap                 = unit(0.05, "mm"),
-       legend_gap             = unit(0.5, "mm"),
-       merge_legend = TRUE)
+      width = 10, height = 10)
+  draw(ht_atac + ht_rna, heatmap_legend_side = "right", annotation_legend_side = "right", merge_legend = TRUE)
   dev.off()
   message("Saved heatmaps for set: ", set_name)
 }
 
-# ----------------------------------------
-# Permutation and Fisher test for TOX and TCF7 binding at enhancer regions
-# ----------------------------------------
+# --- 14. STATISTICAL TESTS FOR TF BINDING AT ENHANCERS ---
+# Summarize TF counts in enhancer regions before and after filtering.
+enhancer_counts_before <- final_annotated_results %>%
+  distinct(acr_id, .keep_all = TRUE) %>% filter(is_enhancer) %>%
+  summarise(across(all_of(tf_groups), ~sum(., na.rm = TRUE))) %>%
+  pivot_longer(everything(), names_to = "TF", values_to = "Count")
+cat("--- TF Counts in Enhancer Regions (Before Filtering) ---\n"); print(enhancer_counts_before)
 
-final_annotated_results <- read.csv( file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
-all_model_results_final <- read.csv(file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+enhancer_counts_after <- all_model_results_final %>%
+  distinct(acr_id, .keep_all = TRUE) %>% filter(is_enhancer) %>%
+  summarise(across(all_of(tf_groups), ~sum(., na.rm = TRUE))) %>%
+  pivot_longer(everything(), names_to = "TF", values_to = "Count")
+cat("\n--- TF Counts in Enhancer Regions (After Filtering) ---\n"); print(enhancer_counts_after)
 
-enhancer_counts_before_filtering <- final_annotated_results %>%
-  distinct(acr_id, .keep_all = TRUE) %>%
-  filter(is_enhancer == TRUE) %>%
-  select(all_of(tf_groups)) %>%
-  summarise_all(~sum(., na.rm = TRUE)) %>%
-  pivot_longer(cols = everything(), names_to = "Transcription_Factor", values_to = "Enhancer_Region_Count") %>%
-  arrange(desc(Enhancer_Region_Count))
-cat("--- TF Counts in Enhancer Regions (Before Filtering) ---\n")
-print(enhancer_counts_before_filtering)
-
-enhancer_counts_after_filtering <- all_model_results_final %>%
-  distinct(acr_id, .keep_all = TRUE) %>%
-  filter(is_enhancer == TRUE) %>%
-  select(all_of(tf_groups)) %>%
-  summarise_all(~sum(., na.rm = TRUE)) %>%
-  pivot_longer(cols = everything(), names_to = "Transcription_Factor", values_to = "Enhancer_Region_Count") %>%
-  arrange(desc(Enhancer_Region_Count))
-cat("\n--- TF Counts in Enhancer Regions (After Filtering) ---\n")
-print(enhancer_counts_after_filtering)
-
-binding_summary <- final_annotated_results %>%
-  mutate(bound_by_TOX = (TOX_Acute == 1),
-         bound_by_TCF7 = (TCF7_Acute == 1),
-         acr_gene = paste0(acr_id, "_x_", gene))
-
-count_both_tox_tcf7 <- binding_summary %>%
-  filter(bound_by_TOX & bound_by_TCF7) %>%
-  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
-  pull(unique_acr_count)
-
-count_only_tox <- binding_summary %>%
-  filter(bound_by_TOX & !bound_by_TCF7) %>%
-  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
-  pull(unique_acr_count)
-
-count_only_tcf7 <- binding_summary %>%
-  filter(!bound_by_TOX & bound_by_TCF7) %>%
-  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
-  pull(unique_acr_count)
-
-cat("--- Summary of Unique ACRs Bound by TOX and TCF7 ---\n")
-cat("Total unique ACRs bound by BOTH TOX and TCF7:", count_both_tox_tcf7, "\n")
-cat("Total unique ACRs bound ONLY by TOX:", count_only_tox, "\n")
-cat("Total unique ACRs bound ONLY by TCF7:", count_only_tcf7, "\n")
-
-count_either_tox_or_tcf7 <- binding_summary %>%
-  filter(bound_by_TOX | bound_by_TCF7) %>%
-  summarise(unique_count = n_distinct(acr_id)) %>%
-  pull(unique_count)
-
-cat("--- Summary of Unique ACR-Gene Pairs ---\n")
-cat("Total unique pairs bound by EITHER TOX or TCF7:", count_either_tox_or_tcf7, "\n")
-verification_total <- count_only_tox + count_only_tcf7 + count_both_tox_tcf7
-cat("Verification by summing previous counts:", verification_total, "\n")
-
+# Fisher's Exact Test for co-binding of TOX and TCF7 at enhancers.
 binding_summary <- all_model_results_final %>%
-  mutate(bound_by_TOX = (TOX_Acute == 1),
-         bound_by_TCF7 = (TCF7_Acute == 1),
-         acr_gene = paste0(acr_id, "_x_", gene))
-
-count_both_tox_tcf7 <- binding_summary %>%
-  filter(bound_by_TOX & bound_by_TCF7) %>%
-  summarise(unique_acr_count = n_distinct(paste0(acr_id))) %>%
-  pull(unique_acr_count)
-
-count_only_tox <- binding_summary %>%
-  filter(bound_by_TOX & !bound_by_TCF7) %>%
-  summarise(unique_acr_count = n_distinct(acr_id)) %>%
-  pull(unique_acr_count)
-
-count_only_tcf7 <- binding_summary %>%
-  filter(!bound_by_TOX & bound_by_TCF7) %>%
-  summarise(unique_acr_count = n_distinct(acr_id)) %>%
-  pull(unique_acr_count)
-
-cat("--- Summary of Unique ACRs Bound by TOX and TCF7 ---\n")
-cat("Total unique ACRs bound by BOTH TOX and TCF7:", count_both_tox_tcf7, "\n")
-cat("Total unique ACRs bound ONLY by TOX:", count_only_tox, "\n")
-cat("Total unique ACRs bound ONLY by TCF7:", count_only_tcf7, "\n")
-
-count_either_tox_or_tcf7 <- binding_summary %>%
-  filter(bound_by_TOX | bound_by_TCF7) %>%
-  summarise(unique_count = n_distinct(acr_id)) %>%
-  pull(unique_count)
-
-cat("--- Summary of Unique ACR-Gene Pairs ---\n")
-cat("Total unique pairs bound by EITHER TOX or TCF7:", count_either_tox_or_tcf7, "\n")
-verification_total <- count_only_tox + count_only_tcf7 + count_both_tox_tcf7
-cat("Verification by summing previous counts:", verification_total, "\n")
-
-acr_annot <- fread(file.path(bulk_atac_dir, "all_acrs_HOMER_annotated.txt")) %>%
-  rename_with(~ gsub(" ", "_", .)) %>%
-  mutate(acr_id = paste0(Chr, "_", Start, "_", End)) %>%
-  select(acr_id, Chr, Start, End) %>%
-  distinct()
-
-all_acrs_gr <- makeGRangesFromDataFrame(acr_annot,
-                                        seqnames.field = "Chr",
-                                        start.field = "Start",
-                                        end.field = "End")
-
-tf_groups <- c("TOX_Acute", "TCF7_Acute")
-tf_peaks_gr_list <- lapply(tf_groups, function(tf) {
-  peaks_df <- annot %>%
-    filter(group == tf) %>%
-    tidyr::separate(peak_id, into = c("chr", "start", "end"), sep = "[_:-]", convert = TRUE)
-  makeGRangesFromDataFrame(peaks_df, keep.extra.columns = TRUE)
-})
-names(tf_peaks_gr_list) <- tf_groups
+  mutate(bound_by_TOX = (TOX_Acute == 1), bound_by_TCF7 = (TCF7_Acute == 1))
 
 enhancer_acrs_df <- binding_summary %>%
   distinct(acr_id, .keep_all = TRUE) %>%
-  filter(bound_by_TCF7 == TRUE)
+  filter(is_enhancer == TRUE)
 
-enhancer_acrs_df <- enhancer_acrs_df %>%
-  separate(acr_id, into = c("chr", "start", "end"), sep = "_", convert = TRUE)
+total_enhancers <- nrow(enhancer_acrs_df)
+tox_bound <- enhancer_acrs_df %>% filter(bound_by_TOX) %>% pull(acr_id)
+tcf7_bound <- enhancer_acrs_df %>% filter(bound_by_TCF7) %>% pull(acr_id)
 
-enhancer_acrs_gr <- makeGRangesFromDataFrame(
-  enhancer_acrs_df,
-  seqnames.field = "chr",
-  start.field = "start",
-  end.field = "end",
-  keep.extra.columns = TRUE
-)
+a <- length(intersect(tox_bound, tcf7_bound)) # Both
+b <- length(setdiff(tox_bound, tcf7_bound))   # TOX only
+c <- length(setdiff(tcf7_bound, tox_bound))   # TCF7 only
+d <- total_enhancers - (a + b + c)            # Neither
 
-length(enhancer_acrs_gr)
+contingency_matrix <- matrix(c(a, c, b, d), nrow = 2,
+                             dimnames = list(TOX = c("Bound", "Not Bound"), TCF7 = c("Bound", "Not Bound")))
+fisher_result <- fisher.test(contingency_matrix, alternative = "greater")
+
+print("Contingency Table for Enhancer Co-binding:"); print(contingency_matrix); print(fisher_result)
+
+# Permutation test for enrichment of TOX and TCF7 peaks at the set of TCF7-bound dynamic enhancers.
+enhancer_acrs_gr <- enhancer_acrs_df %>%
+  separate(acr_id, into = c("chr", "start", "end"), sep = "_", convert = TRUE) %>%
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+tf_peaks_gr_list <- lapply(c("TOX_Acute", "TCF7_Acute"), function(tf) {
+  annot %>% filter(group == tf) %>%
+    separate(peak_id, into = c("chr", "start", "end"), sep = "[_:-]", convert = TRUE) %>%
+    makeGRangesFromDataFrame()
+})
+names(tf_peaks_gr_list) <- c("TOX_Acute", "TCF7_Acute")
 
 plan(multisession, workers = 10)
-n_perm <- 1000
-results <- future_lapply(tf_groups, function(tf) {
-  message(paste("Running permutation test for:", tf))
-  tf_gr <- tf_peaks_gr_list[[tf]]
-  summits <- resize(tf_gr, width = 1, fix = "center")
+perm_results <- future_lapply(names(tf_peaks_gr_list), function(tf) {
   pt <- overlapPermTest(
-    A = summits,
+    A = resize(tf_peaks_gr_list[[tf]], width = 1, fix = "center"), # Use peak summits
     B = enhancer_acrs_gr,
     genome = "hg38",
     universe = all_acrs_gr,
-    ntimes = n_perm,
-    alternative = "greater",
-    rand.func = randomizeRegions,
-    rand.args = list(
-      allow.overlaps = TRUE,
-      per.chromosome = TRUE,
-      mask = NULL
-    ),
-    verbose = TRUE
+    ntimes = 1000,
+    alternative = "greater"
   )
-  data.frame(
-    TF = tf,
-    observed_overlaps = pt$numOverlaps$observed,
-    permuted_mean     = mean(pt$numOverlaps$permuted),
-    z_score           = pt$numOverlaps$zscore,
-    p_value           = pt$numOverlaps$pval
-  )
-})
-results_df <- bind_rows(results)
-print(results_df)
+  data.frame(TF = tf, observed = pt$numOverlaps$observed, expected = mean(pt$numOverlaps$permuted),
+             z_score = pt$numOverlaps$zscore, p_value = pt$numOverlaps$pval)
+}, future.seed = TRUE)
+plan(sequential)
 
-mcols(enhancer_acrs_gr)$acr_gene <- enhancer_acrs_df$acr_gene
-
-tox_hits <- findOverlaps(tf_peaks_gr_list[["TOX_Acute"]], enhancer_acrs_gr)
-tcf7_hits <- findOverlaps(tf_peaks_gr_list[["TCF7_Acute"]], enhancer_acrs_gr)
-
-tox_enhancer_acr_genes <- unique(mcols(enhancer_acrs_gr)$acr_gene[subjectHits(tox_hits)])
-tcf7_enhancer_acr_genes <- unique(mcols(enhancer_acrs_gr)$acr_gene[subjectHits(tcf7_hits)])
-
-length(tox_enhancer_acr_genes)
-length(tcf7_enhancer_acr_genes)
-
-tox_bound <- tox_enhancer_acr_genes
-tcf7_bound <- tcf7_enhancer_acr_genes
-
-tox_set <- unique(tox_bound)
-tcf7_set <- unique(tcf7_bound)
-
-both_bound <- intersect(tox_set, tcf7_set)
-tox_only   <- setdiff(tox_set, both_bound)
-tcf7_only  <- setdiff(tcf7_set, both_bound)
-
-k_tox_total <- length(tox_set)
-m_tcf7_total <- length(tcf7_set)
-x_both <- length(both_bound)
-total_enhancers <- length(enhancer_acrs_gr)
-
-a <- x_both
-b <- k_tox_total - x_both
-c <- m_tcf7_total - x_both
-d <- total_enhancers - (a + b + c)
-contingency_matrix <- matrix(c(a, c, b, d), nrow = 2)
-fisher_result <- fisher.test(contingency_matrix, alternative = "greater")
-
-colnames(contingency_matrix) <- c("TCF7_Bound", "Not_TCF7_Bound")
-rownames(contingency_matrix) <- c("TOX_Bound", "Not_TOX_Bound")
-print("Contingency Table:")
-print(contingency_matrix)
-print(fisher_result)
-cat("\n--- Set Counts ---\n")
-cat("TOX only:", length(tox_only), "\n")
-cat("TCF7 only:", length(tcf7_only), "\n")
-cat("Both (Intersection):", x_both, "\n")
-cat("Total bound by either (Union):", length(union(tox_set, tcf7_set)), "\n")
-cat("Total enhancers in background set (N):", total_enhancers, "\n")
+print("Permutation Test Results:"); print(bind_rows(perm_results))
