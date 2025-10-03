@@ -1,5 +1,5 @@
 #==================================================================================================
-# R SCRIPT FOR FIGURE 5 ANALYSIS
+# R SCRIPT FOR FIGURE 5 ANALYSIS (Updated file paths to be generalizable. Simplified code.) 
 # DATE: October 03, 2025
 #
 # DESCRIPTION:
@@ -8,7 +8,7 @@
 # 1.  Processing and summarizing SRT insertion counts binned across the genome.
 # 2.  Generating a heatmap to visualize the distribution of insertion counts by percentile.
 # 3.  Calculating and plotting signal-to-noise ratios and maximum signal per sample.
-# 4.  Analyzing ChIP-seq peak data to visualize the proportion of TF-specific peaks.
+# 4.  Plot TFlex peak counts.
 #==================================================================================================
 
 # --- 1. LOAD REQUIRED LIBRARIES ---
