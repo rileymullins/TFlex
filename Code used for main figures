@@ -131,7 +131,7 @@ counts <- counts %>%
     )
   ) %>%
   dplyr::mutate(
-    # Set the factor levels as per your requested order
+    # Set the factor levels 
     TF = factor(TF, levels = c("TOX Acute", "TOX2 Acute","TCF7 Acute", "SOX4 Acute", "RBPJ Acute",
                                "TOX Chronic",  "TOX2 Chronic", "TCF7 Chronic",  "SOX4 Chronic")
                 )
@@ -243,7 +243,7 @@ motif_filtered <- motif_filtered %>%
     )
   ) %>%
   dplyr::mutate(
-    # Set the factor levels as per your requested order
+    # Set the factor levels 
     group_name = factor(group_name, levels =c("TCF7 Acute", "TCF7 Chronic", "SOX4 Acute", "SOX4 Chronic", "RBPJ Acute" )
                 )
   )
@@ -468,7 +468,7 @@ ggsave(file=file.path(figdir,"Top_Unique_GO_Promoter_Enriched_Terms_HOMER_Promot
 
 
 # Genomic distributions plot
-# Simplify annotation categories as you already do
+# Simplify annotation categories 
 comb <- comb %>%
   dplyr::mutate(
     annot_type_simple = case_when(
@@ -791,7 +791,7 @@ prom5kb <- keepStandardChromosomes(prom5kb, pruning.mode = "coarse")
 
 #  Convert peaks dataframe to GRanges
 peaks_all <- makeGRangesFromDataFrame(
-  comb,                   # your dataframe with chr/start/end/group
+  comb,                   # df with chr/start/end/group
   seqnames.field = "chr",
   start.field    = "start",
   end.field      = "end",
@@ -1206,7 +1206,7 @@ tf_summary <- final_annotated_results %>%
   # Arrange the TFs by count in descending order
   arrange(desc(Count))
 
-# Print the summary table to your console
+# Print the summary table 
 print(tf_summary)
 
 # Save
@@ -1237,7 +1237,7 @@ tf_summary <- all_model_results_final %>%
   # Arrange the TFs by count in descending order
   arrange(desc(Count))
 
-# Print the summary table to your console
+# Print the summary table 
 print(tf_summary)
 
 # Save filtered
@@ -1308,154 +1308,6 @@ all_model_results_final<-read.csv(file = file.path(figdir,"with_promoter_genes_a
 all_model_results_final
 
 
-
-
-
-
-
-# Plot the extremes of the filtered variables
-library(dplyr)
-library(ggplot2)
-library(gridExtra)
-
-# Your filtered data
-df <- all_model_results_final
-
-# 1. Find extremes using absolute values where appropriate
-max_beta <- df %>% slice_max(abs(beta), n = 1) %>% dplyr::mutate(extreme_type = "max_abs_beta")
-min_beta <- df %>% slice_min(abs(beta), n = 1) %>% dplyr::mutate(extreme_type = "min_abs_beta")
-
-max_rho <- df %>% slice_max(abs(spearman_rho), n = 1) %>% dplyr::mutate(extreme_type = "max_abs_spearman_rho")
-min_rho <- df %>% slice_min(abs(spearman_rho), n = 1) %>% dplyr::mutate(extreme_type = "min_abs_spearman_rho")
-
-max_rsq <- df %>% slice_max(r_squared, n = 1) %>% dplyr::mutate(extreme_type = "max_r_squared")
-min_rsq <- df %>% slice_min(r_squared, n = 1) %>% dplyr::mutate(extreme_type = "min_r_squared")
-
-max_beta_min_rho <- df %>% filter(abs(beta) == max(abs(beta))) %>% 
-  slice_min(abs(spearman_rho), n = 1) %>%
-  dplyr::mutate(extreme_type = "max_abs_beta_min_abs_rho")
-
-min_beta_max_rho <- df %>% filter(abs(beta) == min(abs(beta))) %>% 
-  slice_max(abs(spearman_rho), n = 1) %>%
-  dplyr::mutate(extreme_type = "min_abs_beta_max_abs_rho")
-
-# 2. Combine unique pairs to plot
-pairs_to_plot <- bind_rows(
-  max_beta, min_beta,
-  max_rho, min_rho,
-  max_rsq, min_rsq,
-  max_beta_min_rho, min_beta_max_rho
-) %>%
-  distinct(gene, acr_id, .keep_all = TRUE)
-
-# 3. Define global axis limits to keep same scale
-xlim <- range(atac_mat_filter, na.rm = TRUE)
-ylim <- range(rna_mat_filter, na.rm = TRUE)
-
-plot_pair <- function(gene, acr, beta, spearman_rho, r_squared, extreme_type, rna_mat, atac_mat, xlim, ylim) {
-  df <- data.frame(
-    gene_expression = as.numeric(rna_mat[gene, ]),
-    peak_accessibility = as.numeric(atac_mat[acr, ])
-  )
-  ggplot(df, aes(x = peak_accessibility, y = gene_expression)) +
-    geom_point(alpha = 0.6) +
-    geom_smooth(method = "lm", se = FALSE, color = "blue") +
-    labs(
-      title = paste0(gene, " vs ", acr),
-      subtitle = paste0(extreme_type, "\nBeta = ", round(beta,2),
-                        ", Spearman rho = ", round(spearman_rho, 2),
-                        ", R² = ", round(r_squared, 2)),
-      x = "Peak Accessibility",
-      y = "Gene Expression"
-    ) +
-    theme_minimal() +
-    theme(
-      text = element_text(size = 10, color = "black"),
-      plot.title = element_text(face = "bold", size = 10, color = "black"),
-      plot.subtitle = element_text(size = 10, color = "black"),
-      axis.title = element_text(size = 10, color = "black"),
-      axis.text = element_text(size = 10, color = "black")
-    )
-}
-
-
-# 5. Generate and display plots for each pair with stats printed
-plots <- lapply(1:nrow(pairs_to_plot), function(i) {
-  row <- pairs_to_plot[i, ]
-  plot_pair(row$gene, row$acr_id, row$beta, row$spearman_rho, row$r_squared,
-            row$extreme_type, rna_mat_filter, atac_mat_filter, xlim, ylim)
-})
-
-grid.arrange(grobs = plots, ncol = 2)
-
-# 6. Print concise table with key stats and extreme_type for those pairs
-print(pairs_to_plot %>%
-        select(gene, acr_id, beta, spearman_rho, r_squared, extreme_type) %>%
-        dplyr::mutate(across(c(beta, spearman_rho, r_squared), ~ round(.x, 2))))
-
-
-
-# Venn diagram of TOX-TCF7 binding
-library(eulerr)
-library(ggvenn)
-
-# Venn diagram of genes
-tox_targets  <- all_model_results_final %>% filter(TOX_Acute == 1) %>% filter(!acr_id %in% NA) %>% pull(gene) %>% unique()
-tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1) %>% filter(!acr_id %in% NA) %>% pull(gene) %>% unique()
-
-# Create named list of sets
-gene_sets <- list(TCF7 = tcf7_targets, TOX = tox_targets)
-
-# Fit Euler diagram
-fit <- euler(gene_sets)
-
-# Plot with proportional circle sizes
-p <- plot(fit,
-          fills = list(fill = c("skyblue", "orange"), alpha = 0.7),
-          labels = list(font = 2),
-          quantities = TRUE)
-p
-
-# Save plots
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_genes.png"),
-       plot = p, width = 4, height = 3, dpi = 300)
-
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_genes.pdf"),
-       plot = p, width = 4, height = 3, dpi = 300)
-
-
-# Venn diagram of acr-gene pairs
-# Extract sets
-tox_targets  <- all_model_results_final %>% 
-  filter(TOX_Acute == 1) %>% 
-    filter(!acr_id %in% NA) %>%
-  pull(acr_gene) %>% 
-  unique()
-
-tcf7_targets <- all_model_results_final %>% 
-  filter(TCF7_Acute == 1) %>% 
-      filter(!acr_id %in% NA) %>%
-  pull(acr_gene) %>% 
-  unique()
-
-# Create named list of sets
-acr_gene_sets <- list(TCF7 = tcf7_targets, TOX = tox_targets)
-
-# Fit Euler diagram
-fit <- euler(acr_gene_sets)
-
-# Plot with proportional circle sizes
-p <- plot(fit,
-          fills = list(fill = c("skyblue", "orange"), alpha = 0.7),
-          labels = list(font = 2),
-          quantities = TRUE)
-p
-
-
-# Save plots
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_peak_gene_pairs.png"),plot = p, width =4, height = 3, dpi = 300)
-
-ggsave(file.path(figdir, "venn_diagram_tox_tcf7_peak_gene_pairs.pdf"),plot = p, width = 4, height = 3, dpi = 300)
 
 
 
@@ -1536,8 +1388,8 @@ ggsave(
 
 
 
-# Heatmap of genes
-# Loop wrapper that reuses your original heatmap code but enforces identical width/height
+# Heatmap of enhancer-gene pairs
+# Loop wrapper that reuses original heatmap code but enforces identical width/height
 library(dplyr)
 library(ComplexHeatmap)
 library(circlize)
@@ -1577,7 +1429,7 @@ tcf7_targets <- all_model_results_final %>% filter(TCF7_Acute == 1) %>% filter(!
 acr_gene_sets <- list(TCF7 = tcf7_targets, TOX = tox_targets)
 
 
-# ---------- Build the three sets exactly like you described ----------
+# ---------- Build the three sets  ----------
 tcf7_sp <- all_model_results_final %>% filter(acr_gene %in% setdiff(acr_gene_sets$TCF7, acr_gene_sets$TOX))
 tox_sp  <- all_model_results_final %>% filter(acr_gene %in% setdiff(acr_gene_sets$TOX,  acr_gene_sets$TCF7))
 common  <- all_model_results_final %>% filter(acr_gene %in% intersect(acr_gene_sets$TCF7, acr_gene_sets$TOX))
@@ -1590,12 +1442,10 @@ sets_list <- list(
 )
 
 # ---------- Determine maximum rows across sets so heatmaps have the same height ----------
-# For your code the number of rows equals number of pairs (filtered_data_tox rows) => used downstream as 'n_rows'
 n_rows_per_set <- sapply(sets_list, function(df) nrow(df %>% distinct(acr_id, gene)))
 n_rows_max <- max(n_rows_per_set, 1)
 
 # ---------- Determine number of columns (samples) from existing ordering if available ----------
-# Your code computes final_col_order_atac earlier; if not present, derive from mae_paired metadata
 if (exists("final_col_order_atac")) {
   n_cols <- length(final_col_order_atac)
 } else {
@@ -1608,7 +1458,7 @@ if (exists("final_col_order_atac")) {
   n_cols <- length(final_col_order_atac)
 }
 
-# ---------- Keep your original cell sizes ----------
+# ---------- Keep original cell sizes ----------
 cell_width <- unit(0.2, "mm")
 cell_height <- unit(0.14, "mm")
 
@@ -1619,7 +1469,7 @@ total_heatmap_height <- n_rows_max * cell_height
 total_width_mm  <- as.numeric(convertUnit(total_heatmap_width, "mm"))
 total_height_mm <- as.numeric(convertUnit(total_heatmap_height, "mm"))
 
-# ---------- Loop through sets and run your original heatmap code for each set ----------
+# ---------- Loop through sets and run original heatmap code for each set ----------
 outdir <- file.path(figdir, "heatmaps_by_set")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
@@ -1633,7 +1483,7 @@ for (set_name in names(sets_list)) {
     next
   }
   
-  # ------------------ BEGIN: your ORIGINAL heatmap code (kept intact) ------------------
+  # ------------------ BEGIN: ORIGINAL heatmap code  ------------------
   # Prepare Assay Matrices and Metadata 
   atac_mat <- assay(mae_paired[["atac"]])
   rna_mat  <- assay(mae_paired[["rna"]])
@@ -1675,12 +1525,12 @@ for (set_name in names(sets_list)) {
   atac_z_ordered <- atac_z[, ordered_cols_df$ATAC_ID, drop = FALSE]
   rna_z_ordered  <- rna_z[, ordered_cols_df$RNA_ID,  drop = FALSE]
   
-  # ---------- INSERTED: Determine Final Column Order via K-Means (your exact block with safe guard) ----------
+  # ---------- INSERTED: Determine Final Column Order via K-Means 
   set.seed(1)
   k <- 3
   km_result_cols <- kmeans(t(rna_z_ordered), centers = k, nstart = 50)
   
-  # Attempt to reorder levels the same way you wrote it, but guard against missing names
+  # reorder levels but guard against missing names
   try({
     # if those named entries exist in km_result_cols$cluster, use them as ordering
     named_idxs <- c("R_S7007", "R_S7006", "R_S8023")
@@ -1847,10 +1697,10 @@ km_cluster_row_colors <- c("Naive" = "lightblue", "Effector" = "navy")
 
 # 2. BUILD the left row annotation, combining the new cluster annotation with the existing site annotation
 left_ha <- rowAnnotation(
-    # New annotation for the k-means cluster, using the row_split_factor you already created
+    # New annotation for the k-means cluster
     `KM Cluster` = row_split_factor,
 
-    # Your existing annotation for the site type
+    # Existing annotation for the site type
     Site = regulation_vec,
 
     # Provide a list of colors for BOTH annotations
@@ -1970,6 +1820,375 @@ left_ha <- rowAnnotation(
 
   message("Saved heatmaps for set: ", set_name)
 }
+
+
+
+
+
+
+
+
+
+
+
+# Permutation and Fisher test for TOX and TCF7 binding at enhancer regions
+
+# Load data
+final_annotated_results <- read.csv( file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+
+all_model_results_final<-read.csv(file = file.path(figdir,"ALL_ACUTE_AND_CHRONIC_FILTERED_final_annotated_results_from_acr_gene_pairs_for_modeling.csv"))
+
+
+
+enhancer_counts_before_filtering <- final_annotated_results %>%
+  distinct(acr_id, .keep_all = T)%>%
+  # Filter to include only pairs where the ACR is linked via an enhancer
+  filter(is_enhancer == TRUE) %>%
+  # Select only the columns corresponding to the TFs
+  select(all_of(tf_groups)) %>%
+  # Calculate the total binding events for each TF
+  summarise_all(~sum(., na.rm = TRUE)) %>%
+  # Convert the data from a wide to a long format for easier viewing
+  pivot_longer(cols = everything(), names_to = "Transcription_Factor", values_to = "Enhancer_Region_Count") %>%
+  # Sort the results in descending order
+  arrange(desc(Enhancer_Region_Count))
+
+# Print the summary table
+cat("--- TF Counts in Enhancer Regions (Before Filtering) ---\n")
+print(enhancer_counts_before_filtering)
+
+
+## Count Enhancer Regions Bound by Each TF (After Filtering)
+# This calculation is based on the subset of enhancer-gene pairs that passed
+# the significance and effect size filters (fdr < 0.05, beta > 0.15, etc.).
+
+enhancer_counts_after_filtering <- all_model_results_final %>%
+    distinct(acr_id, .keep_all = T)%>%
+  # Filter to include only pairs where the ACR is linked via an enhancer
+  filter(is_enhancer == TRUE) %>%
+  # Select only the columns corresponding to the TFs
+  select(all_of(tf_groups)) %>%
+  # Calculate the total binding events for each TF
+  summarise_all(~sum(., na.rm = TRUE)) %>%
+  # Convert the data from a wide to a long format
+  pivot_longer(cols = everything(), names_to = "Transcription_Factor", values_to = "Enhancer_Region_Count") %>%
+  # Sort the results in descending order
+  arrange(desc(Enhancer_Region_Count))
+
+# Print the summary table
+cat("\n--- TF Counts in Enhancer Regions (After Filtering) ---\n")
+print(enhancer_counts_after_filtering)
+
+
+
+
+
+binding_summary <- final_annotated_results %>%
+  mutate(
+    bound_by_TOX = (TOX_Acute == 1),
+    bound_by_TCF7 = (TCF7_Acute == 1)
+  )%>%  
+  dplyr::mutate(
+         acr_gene = paste0(acr_id,"_x_",gene)
+) 
+
+# 1. Calculate the total unique ACRs bound by BOTH TOX and TCF7
+count_both_tox_tcf7 <- binding_summary %>%
+  filter(bound_by_TOX & bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
+  pull(unique_acr_count)
+
+# 2. Calculate the total unique ACRs bound ONLY by TOX (and not TCF7)
+count_only_tox <- binding_summary %>%
+  filter(bound_by_TOX & !bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
+  pull(unique_acr_count)
+
+# 3. Calculate the total unique ACRs bound ONLY by TCF7 (and not TOX)
+count_only_tcf7 <- binding_summary %>%
+  filter(!bound_by_TOX & bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_gene)) %>%
+  pull(unique_acr_count)
+
+# --- Print the Results ---
+cat("--- Summary of Unique ACRs Bound by TOX and TCF7 ---\n")
+cat("Total unique ACRs bound by BOTH TOX and TCF7:", count_both_tox_tcf7, "\n")
+cat("Total unique ACRs bound ONLY by TOX:", count_only_tox, "\n")
+cat("Total unique ACRs bound ONLY by TCF7:", count_only_tcf7, "\n")
+
+
+
+
+binding_summary <- final_annotated_results %>%
+  mutate(
+    bound_by_TOX = (TOX_Acute == 1),
+    bound_by_TCF7 = (TCF7_Acute == 1)
+  ) %>%
+  mutate(
+    acr_gene = paste0(acr_id, "_x_", gene)
+  )
+
+# Calculate the total unique acr_gene pairs bound by EITHER TOX or TCF7
+count_either_tox_or_tcf7 <- binding_summary %>%
+  # Filter for rows where the pair is bound by TOX OR TCF7
+  filter(bound_by_TOX | bound_by_TCF7) %>%
+  # Get the count of distinct acr_gene pairs
+  summarise(unique_count = n_distinct(acr_id)) %>%
+  # Extract the final numerical value
+  pull(unique_count)
+
+# --- Print the Result ---
+cat("--- Summary of Unique ACR-Gene Pairs ---\n")
+cat("Total unique pairs bound by EITHER TOX or TCF7:", count_either_tox_or_tcf7, "\n")
+
+# For verification, this number should equal the sum of the three categories
+# ('only TOX', 'only TCF7', and 'both')
+verification_total <- count_only_tox + count_only_tcf7 + count_both_tox_tcf7
+cat("Verification by summing previous counts:", verification_total, "\n")
+
+
+
+
+
+binding_summary <- all_model_results_final %>%
+  mutate(
+    bound_by_TOX = (TOX_Acute == 1),
+    bound_by_TCF7 = (TCF7_Acute == 1)
+  ) %>%  
+  dplyr::mutate(
+         acr_gene = paste0(acr_id,"_x_",gene)
+) 
+
+# 1. Calculate the total unique ACRs bound by BOTH TOX and TCF7
+count_both_tox_tcf7 <- binding_summary %>%
+  filter(bound_by_TOX & bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(paste0(acr_id))) %>%
+  pull(unique_acr_count)
+
+# 2. Calculate the total unique ACRs bound ONLY by TOX (and not TCF7)
+count_only_tox <- binding_summary %>%
+  filter(bound_by_TOX & !bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_id)) %>%
+  pull(unique_acr_count)
+
+# 3. Calculate the total unique ACRs bound ONLY by TCF7 (and not TOX)
+count_only_tcf7 <- binding_summary %>%
+  filter(!bound_by_TOX & bound_by_TCF7) %>%
+  summarise(unique_acr_count = n_distinct(acr_id)) %>%
+  pull(unique_acr_count)
+
+# --- Print the Results ---
+cat("--- Summary of Unique ACRs Bound by TOX and TCF7 ---\n")
+cat("Total unique ACRs bound by BOTH TOX and TCF7:", count_both_tox_tcf7, "\n")
+cat("Total unique ACRs bound ONLY by TOX:", count_only_tox, "\n")
+cat("Total unique ACRs bound ONLY by TCF7:", count_only_tcf7, "\n")
+
+
+
+# Calculate the total unique acr_gene pairs bound by EITHER TOX or TCF7
+count_either_tox_or_tcf7 <- binding_summary %>%
+  # Filter for rows where the pair is bound by TOX OR TCF7
+  filter(bound_by_TOX | bound_by_TCF7) %>%
+  # Get the count of distinct acr_gene pairs
+  summarise(unique_count = n_distinct(acr_id)) %>%
+  # Extract the final numerical value
+  pull(unique_count)
+
+# --- Print the Result ---
+cat("--- Summary of Unique ACR-Gene Pairs ---\n")
+cat("Total unique pairs bound by EITHER TOX or TCF7:", count_either_tox_or_tcf7, "\n")
+
+# For verification, this number should equal the sum of the three categories
+# ('only TOX', 'only TCF7', and 'both') 
+verification_total <- count_only_tox + count_only_tcf7 + count_both_tox_tcf7
+cat("Verification by summing previous counts:", verification_total, "\n")
+
+
+
+
+
+# ---- Permutation test of TOX and TCF7 binding at enhancers relative to all ATAC peaks----
+
+# Load all ATAC peaks as background "universe"
+acr_annot <- fread(file.path(bulk_atac_dir, "all_acrs_HOMER_annotated.txt")) %>%
+  rename_with(~ gsub(" ", "_", .)) %>%
+  mutate(acr_id = paste0(Chr, "_", Start, "_", End)) %>%
+  select(acr_id, Chr, Start, End) %>%
+  distinct()
+
+
+
+all_acrs_gr <- makeGRangesFromDataFrame(acr_annot,
+                                        seqnames.field = "Chr",
+                                        start.field = "Start",
+                                        end.field = "End")
+
+
+# --- TF peaks ---
+tf_groups <- c("TOX_Acute", "TCF7_Acute")
+
+tf_peaks_gr_list <- lapply(tf_groups, function(tf) {
+  peaks_df <- comb %>%
+    filter(group == tf) %>%
+    # Separate peak_id into coordinates *before* creating the GRanges object
+    tidyr::separate(peak_id, into = c("chr", "start", "end"), sep = "[_:-]", convert = TRUE)
+  
+  makeGRangesFromDataFrame(peaks_df, keep.extra.columns = TRUE)
+})
+names(tf_peaks_gr_list) <- tf_groups
+
+
+
+
+## Define the specific regions of interest for the test
+# Filter to enhancer peaks only and keep unique acr_id
+enhancer_acrs_df <- binding_summary %>%
+  distinct(acr_id, .keep_all = TRUE) %>%
+  filter(bound_by_TCF7 == TRUE)
+nrow(enhancer_acrs_df)
+
+# Split acr_id into chr, start, end
+enhancer_acrs_df <- enhancer_acrs_df %>%
+  separate(acr_id, into = c("chr", "start", "end"), sep = "_", convert = TRUE)
+
+# Make GRanges object
+enhancer_acrs_gr <- makeGRangesFromDataFrame(
+  enhancer_acrs_df,
+  seqnames.field = "chr",
+  start.field = "start",
+  end.field = "end",
+  keep.extra.columns = TRUE
+)
+length(enhancer_acrs_gr)
+
+
+## Run a permutation test per TF
+plan(multisession, workers = 10) 
+
+n_perm <- 1000
+
+results <- future_lapply(tf_groups, function(tf) {
+  
+  message(paste("Running permutation test for:", tf))
+  
+  # Get TF peaks
+  tf_gr <- tf_peaks_gr_list[[tf]]
+  
+  # Convert to summits (midpoint of each peak, width = 1)
+  summits <- resize(tf_gr,
+                    width = 1,
+                    fix = "center")
+  
+  # Permutation test
+  pt <- overlapPermTest(
+    A = summits,
+    B = enhancer_acrs_gr,
+    genome = "hg38",
+    universe = all_acrs_gr,
+    ntimes = n_perm,
+    alternative = "greater",
+    rand.func = randomizeRegions,
+    rand.args = list(
+      allow.overlaps = TRUE,
+      per.chromosome = TRUE,
+      mask = NULL
+    ),
+    verbose = TRUE
+  )
+  
+  # Collect results
+  data.frame(
+    TF = tf,
+    observed_overlaps = pt$numOverlaps$observed,
+    permuted_mean     = mean(pt$numOverlaps$permuted),
+    z_score           = pt$numOverlaps$zscore,
+    p_value           = pt$numOverlaps$pval
+  )
+})
+
+results_df <- bind_rows(results)
+print(results_df)
+
+
+
+
+
+
+
+# FISHER test of TOX and TCF7 co binding at enhancer ATAC peaks
+
+# ---- Count unique enhancers for each TF ----
+mcols(enhancer_acrs_gr)$acr_gene <- enhancer_acrs_df$acr_gene
+
+# Find overlaps
+tox_hits <- findOverlaps(tf_peaks_gr_list[["TOX_Acute"]], enhancer_acrs_gr)
+tcf7_hits <- findOverlaps(tf_peaks_gr_list[["TCF7_Acute"]], enhancer_acrs_gr)
+
+# Get the unique enhancers  bound by each TF
+tox_enhancer_acr_genes <- unique(mcols(enhancer_acrs_gr)$acr_gene[subjectHits(tox_hits)])
+tcf7_enhancer_acr_genes <- unique(mcols(enhancer_acrs_gr)$acr_gene[subjectHits(tcf7_hits)])
+
+# check counts
+length(tox_enhancer_acr_genes)
+length(tcf7_enhancer_acr_genes)
+
+
+tox_bound <- tox_enhancer_acr_genes  # character vector of acr_gene bound by TOX
+tcf7_bound <- tcf7_enhancer_acr_genes  # character vector of acr_gene bound by TCF7
+
+tox_set <- unique(tox_bound)
+tcf7_set <- unique(tcf7_bound)
+
+# Intersection and differences
+both_bound <- intersect(tox_set, tcf7_set)
+tox_only   <- setdiff(tox_set, both_bound)
+tcf7_only  <- setdiff(tcf7_set, both_bound)
+
+
+# Counts needed for the test
+k_tox_total <- length(tox_set)
+m_tcf7_total <- length(tcf7_set)
+x_both <- length(both_bound)
+
+# --- 3. BUILD CONTINGENCY TABLE AND RUN TEST (FIXED) ---
+
+# The 2x2 contingency table represents these counts:
+#
+#                | TCF7-Bound | Not TCF7-Bound
+#  --------------|------------|---------------
+#    TOX-Bound   |     a      |       b
+#  Not TOX-Bound |     c      |       d
+
+a <- x_both                           # Bound by TOX AND TCF7
+b <- k_tox_total - x_both             # Bound by TOX only
+c <- m_tcf7_total - x_both            # Bound by TCF7 only
+d <- total_enhancers - (a + b + c)    # Bound by NEITHER TF
+
+# Create the matrix
+contingency_matrix <- matrix(c(a, c, b, d), nrow = 2)
+
+# Perform the Fisher's exact test for significant enrichment (overlap)
+fisher_result <- fisher.test(contingency_matrix, alternative = "greater")
+
+
+# --- 4. DISPLAY RESULTS ---
+
+# Print the contingency table for verification
+colnames(contingency_matrix) <- c("TCF7_Bound", "Not_TCF7_Bound")
+rownames(contingency_matrix) <- c("TOX_Bound", "Not_TOX_Bound")
+print("Contingency Table:")
+print(contingency_matrix)
+
+# Print the test result
+print(fisher_result)
+
+# Print individual counts for verification
+cat("\n--- Set Counts ---\n")
+cat("TOX only:", length(tox_only), "\n")
+cat("TCF7 only:", length(tcf7_only), "\n")
+cat("Both (Intersection):", x_both, "\n")
+cat("Total bound by either (Union):", length(union(tox_set, tcf7_set)), "\n")
+cat("Total enhancers in background set (N):", total_enhancers, "\n")
 
 
 
@@ -2998,7 +3217,7 @@ programs <- list_of_top_genes
   #Enforce scale from 0 to max_val
  breaks <- seq(0, 1, length.out = 101)
 
-  #Use your desired palette (100 colors)
+  #Use desired palette (100 colors)
  pheatmap(
    similarity_matrix,
    main = "Pairwise Similarity of NMF Programs",
@@ -3258,10 +3477,10 @@ tf_order <- c("RBPJ", "SOX4", "TCF7", "TOX", "TOX2")
 row_annot_df <- as.data.frame(tf_annotation_list, stringsAsFactors = FALSE)[, tf_order]
 
 # 2. Add the Program information as a new column to the annotation data frame
-# 'gene_program_map' and 'final_order' are already defined in your script
+# 'gene_program_map' and 'final_order' are already defined in script
 row_annot_df$Program <- factor(gene_program_map, levels = final_order)
 
-# 3. Create the color mapping for TFs (from your original script)
+# 3. Create the color mapping for TFs 
 for(tf in tf_order) {
   row_annot_df[[tf]] <- factor(ifelse(row_annot_df[[tf]] == "Target", "Target", "Not Target"),
                                  levels = c("Target", "Not Target"))
@@ -3768,9 +3987,7 @@ motif_result_files <- list.files(
 # A more memory-efficient way to load and combine the data
 motif_results_list <- lapply(motif_result_files, function(file) {
   
-  # Use data.table::fread to selectively read only the columns you need
-  # This is the most important step for reducing memory usage.
-  # Customize the 'select' vector with the exact column names you require.
+  # Use data.table::fread 
   dt <- data.table::fread(
     file,
     select = c(
@@ -4695,7 +4912,7 @@ plot_log2fc_heatmap <- function(mat, out_prefix, plot_title,
   ))
 }
 
-# Define genes to label (your existing list)
+# Define genes to label 
 # CORRECTED interesting genes list - fixed TNFSRF1B -> TNFRSF1B
 interesting_genes_list <- c(
   "GZMA", "GZMH", "GZMB", "GZMK", "PDCD1", "TIGIT", "TNFRSF9", "RUNX1", "RUNX3",
@@ -4723,7 +4940,6 @@ interesting_genes_list <- unique(interesting_genes_list)
 interesting_genes_list <- sort(interesting_genes_list)
 
 
-# Your existing loop code remains the same
 # Define variables
 all_model_results_final_degs <- list()
 
