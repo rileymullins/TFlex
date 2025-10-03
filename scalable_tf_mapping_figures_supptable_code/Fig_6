@@ -241,20 +241,8 @@ p_filtered <- ggplot(columns_per_split_filtered, aes(x = column_combo, y = n_col
 ggsave(file.path(fig_dir, "JUN.FOS.BATF_combos_only_total_peaks_per_combination.png"), plot = p_filtered, width = 6, height = 4, bg = "white", dpi = 300)
 ggsave(file.path(fig_dir, "JUN.FOS.BATF_combos_only_total_peaks_per_combination.pdf"), plot = p_filtered, width = 6, height = 4)
 
-# --- 7. EXPORT BED FILES FOR MOTIF ANALYSIS ---
-# Export BED files for each binding combination for downstream analysis (e.g., HOMER).
-bed_df <- data.frame(peak = names(col_combos_filtered), combo = as.character(col_combos_filtered)) %>%
-  separate(peak, into = c("chr", "start", "end"), sep = "[:-]", convert = TRUE)
-outdir <- file.path(fig_dir, "HOMER_JUN_FOS_BATF_COMBO_BINDING")
-dir.create(outdir, showWarnings = FALSE)
-for (combo in unique(bed_df$combo)) {
-  subset_bed <- bed_df %>% filter(combo == !!combo) %>% select(chr, start, end)
-  fname <- gsub("[+]", "_plus_", combo) %>% gsub("[.]", "_", .)
-  outfile <- file.path(outdir, paste0(fname, "_significant_peaks.bed"))
-  write.table(subset_bed, file = outfile, sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
-}
 
-# --- 8. IDENTIFY GENE TARGETS OF CO-BOUND SITES ---
+# --- 7. IDENTIFY GENE TARGETS OF CO-BOUND SITES ---
 # Identify genes linked to JFB peaks that are also co-bound by JUN or BATF.
 dt <- fread(engreitz_pairs_file) %>% distinct(enh_coord, chr, start, end, gene_name)
 se_rna <- readRDS(rna_dds_file); rna_mat <- assay(se_rna)
@@ -301,7 +289,7 @@ all_model_results_final <- all_pairs %>%
   left_join(tf_binding_info, by = "acr_id") %>%
   filter(JUN.FOS.BATF == 1 & (JUN == 1 | BATF == 1))
 
-# --- 9. DIFFERENTIAL GENE EXPRESSION ANALYSIS OF TARGETS ---
+# --- 8. DIFFERENTIAL GENE EXPRESSION ANALYSIS OF TARGETS ---
 # Map binding group names to RNA-seq condition names.
 group_to_tf_map <- c("JUN.FOS.BATF" = "cJUN_cFOS_BATF", "BATF" = "BATF", "MAFF.ATF3.BATF2" = "MAFF_ATF3_BATF2",
                      "BATF3.BATF2.MAFF" = "BATF3_BATF2_MAFF", "BATF3.JDP2.BATF2" = "BATF3_JDP2_BATF2",
@@ -319,7 +307,7 @@ rna_results_list <- lapply(conditions_to_test, function(cond) {
 log2fc_rna <- do.call(cbind, lapply(rna_results_list, `[[`, "l2fc"))
 colnames(log2fc_rna) <- paste0(conditions_to_test, "_vs_", control_group)
 
-# Identify differentially expressed genes (DEGs).
+# Identify DEGs
 FDR_cutoff <- 0.05; logfc_cutoff <- 0.75
 rna_sig_df <- map_dfr(conditions_to_test, ~{
   results(dds_rna_res, contrast = c("TF", .x, control_group)) %>%
@@ -336,9 +324,6 @@ gene_sets_df <- map_dfr(tf_combos, function(tf_subset) {
        genes = list(all_model_results_final %>% filter(if_all(all_of(tf_subset), ~ .x == 1)) %>% pull(gene) %>% unique()))
 })
 
-# Define a function to plot log2FC heatmaps.
-color_fun_rna <- colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B"))
-interesting_genes_list <- unique(sort(c("GZMA", "GZMB", "PDCD1", "TIGIT", "RUNX3", "FAS", "PRDM1", "LEF1", "BACH2", "ID2", "IFNG", "TCF7", "TOX", "LAG3")))
 # Function to plot log2fc
 plot_log2fc_heatmap <- function(mat, out_prefix, plot_title, 
                                 interesting_genes, row_km = 4, 
@@ -387,7 +372,7 @@ plot_log2fc_heatmap <- function(mat, out_prefix, plot_title,
     name                  = plot_title,
     col                   = color_function,
     row_split             = km_split_vector,
-    column_split          = colnames(mat_ordered), # <-- ADDED THIS LINE
+    column_split          = colnames(mat_ordered), 
     cluster_rows          = TRUE,
     cluster_row_slices    = FALSE,
     cluster_columns       = FALSE,
@@ -420,7 +405,7 @@ plot_log2fc_heatmap <- function(mat, out_prefix, plot_title,
 
   cat("Saved Log2FC heatmap to:", out_prefix, "\n")
   
-  # --- Return debug info ---
+  # --- Return  info ---
   return(list(
     total_genes_plotted = nrow(mat_ordered),
     interesting_genes_requested = length(interesting_genes),
@@ -429,32 +414,100 @@ plot_log2fc_heatmap <- function(mat, out_prefix, plot_title,
   ))
 }
 
+# Define genes to label (your existing list)
+interesting_genes_list <- c(
+  "GZMA", "GZMH", "GZMB", "GZMK", "PDCD1", "TIGIT", "TNFRSF9", "RUNX1", "RUNX3",
+  "NFATC3", "NFIL3", "BCL2", "FAS", "PRDM1", "KLRD1", "KLRG1", "LEF1", "BACH2",
+  "HAVCR2", "IL2RA", "IL12RB1", "IL12RB2", "ID2", "ID3", "NFKB1", "NFKBIZ",
+  "BCL11B", "KLF7", "MYB", "FOXP1", "IL7R", "SOX4", "RUNX2", "IFNG", "TNF", "IKZF3",
+  "IKZF2", "IKZF1", "CSF1", "FASLG", "PRF1", "BATF3", "IRF4", "IRF2", "KLRC1", "KLRC2","BATF3",
+  "IRF1", "CD28", "CTLA4", "KLF6", "KLF2", "TOX", "TOX2", "TCF7", "ICOS", "LAG3", "TIGIT",
+  "PDCD1", "TNFRSF9", "TNF", "FASLG", "BHLHE40", "ARID5B", "FYN", "GZMB",
+  "IL2RA", "IL2RB", "IRF4", "NKG7", "TCF7", "FOSL1", "JUN", "BATF", "CCL5", "GZMA",
+  "GZMH", "PRF1", "LAG3", "ZAP70", "KLRG1", "OAS1", "OAS2", "RUNX1", "RUNX2", "RUNX3",
+  "SLAMF6", "TANK", "XCL2", "RBPJ", "NFATC3", "NFAT5", "FAS", "PRDM1", "BACH2", "ID2",
+  "ID3", "NFKB1", "FOXP1", "IL7R", "SOX4", "RELA", "FOS", "IFNG", "IKZF2", "IRF2",
+  "KLRC2", "KLRC1", "IRF1", "CD28", "CTLA4", "TOX", "TOX2", "ICOS", "TIGIT", "CD69",
+  "LEF1", "CCR7", "FOXO1", "STAT5A", "STAT5B", "HIF1A", "IKZF3", "SNX9", "FUT8", "PIK3CD",
+  "AHR", "LAYN", "PIK3C2B", "KAT6A",
+  "BTLA","CBLB","GNLY","ICOS", "IL13", "IL23R", "IL26", "IL4", "IL5", "IL23R", "KLRD1",
+  "LEF1","SATB1","SLAMF7","SOX4","TLR2","WNT7B","ZBTB32","CXCR4","IL2RA","CD69","PIK3CA","TNFRSF1B", 
+  "BATF3","CD63","TGFB3","PDCD1LG2","CBLB","GNLY","FCGR3A","TNFRSF1A","TNFSF10",
+  "PPP3CC","LEF1",
+  "SRF","BIRC2","BCL2A1","FOXN3","CSF2","IFI16","DEK","CASP1","ITGA4","ITGA2","ZC3H12A"
+)
+# Remove duplicates and sort for easier inspection
+interesting_genes_list <- unique(interesting_genes_list)
+interesting_genes_list <- sort(interesting_genes_list)
 
 
-# Generate heatmaps for specific TF combinations.
+# Define variables
+all_model_results_final_degs <- list()
+
+degs_df <- rna_sig_df # Use the full significant results data frame for filtering
+control_name <- "CAR_GFP"
 combo_to_filter <- c("JUN_JUN.FOS.BATF", "BATF_JUN.FOS.BATF", "JUN_BATF_JUN.FOS.BATF")
+all_model_results_final_degs <- list()
+
 for (combo in combo_to_filter) {
-  group_genes <- gene_sets_df %>% filter(combo == !!combo) %>% pull(genes) %>% unlist() %>% unique()
+  message(sprintf("--- Processing combo: %s ---", combo))
+  
+  # 1. Get the full set of genes for this binding combination
+  group_genes <- gene_sets_df %>% 
+    filter(combo == !!combo) %>% 
+    pull(genes) %>% 
+    unlist() %>% 
+    unique()
+  
+  cat(sprintf("Step 1: Found %d total genes with the '%s' binding signature.\n", length(group_genes), combo))
+
+  # 2. Identify DEGs specific to THIS combo's conditions
   tf_names_in_combo <- strsplit(combo, "_")[[1]]
   rna_conditions_in_combo <- unname(group_to_tf_map[tf_names_in_combo])
-  combo_specific_degs <- rna_sig_df %>% filter(comparison_v_cargfp %in% rna_conditions_in_combo) %>% pull(gene) %>% unique()
-  final_genes_to_plot <- intersect(group_genes, combo_specific_degs)
-  if (length(final_genes_to_plot) == 0) next
   
-  # Prepare matrix for plotting.
-  contrast_names <- paste0(rna_conditions_in_combo, "_vs_", control_group)
-  log2fc_rna_plot <- log2fc_rna[final_genes_to_plot, intersect(contrast_names, colnames(log2fc_rna)), drop = FALSE]
+  combo_specific_degs <- degs_df %>%
+    filter(comparison_v_cargfp %in% rna_conditions_in_combo) %>%
+    pull(gene) %>%
+    unique()
+  
+  cat(sprintf("Step 2: Found %d unique DEGs across conditions specific to this combo (%s).\n", length(combo_specific_degs), paste(rna_conditions_in_combo, collapse=", ")))
+
+  # 3. Filter the binding-defined genes to keep only the ones that are also DEGs
+  final_genes_to_plot <- intersect(group_genes, combo_specific_degs)
+  
+  cat(sprintf("Step 3: After filtering, %d genes remain to be plotted.\n", length(final_genes_to_plot)))
+
+  if (length(final_genes_to_plot) == 0) {
+    message("No overlapping genes found for this combo after filtering. Skipping.\n")
+    next
+  }
+
+  # 4. Prepare the matrix for plotting
+  contrast_names <- paste0(rna_conditions_in_combo, "_vs_", control_name)
+  available_contrasts <- intersect(contrast_names, colnames(log2fc_rna))
+  log2fc_rna_plot <- log2fc_rna[final_genes_to_plot, available_contrasts, drop = FALSE]
+
+  # Rename columns back to binding names for clarity
   colnames(log2fc_rna_plot) <- sapply(colnames(log2fc_rna_plot), function(x) {
     base <- sub("_vs_.*$", "", x)
-    names(group_to_tf_map)[group_to_tf_map == base][1]
+    binding_name <- names(group_to_tf_map)[group_to_tf_map == base]
+    if (length(binding_name) > 0) binding_name[1] else base
   })
-  
-  # Call the plotting function (full function definition is in the original script).
+
+  # 5. Call the  plotting function
   plot_log2fc_heatmap(
     mat = log2fc_rna_plot,
-    out_prefix = file.path(fig_dir, paste0("log2FC_RNA_", combo)),
+    out_prefix = file.path(output_dir, paste0("log2FC_RNA_", combo)),
+    plot_title = paste0("RNA_", combo),
     interesting_genes = interesting_genes_list,
     color_function = color_fun_rna,
     row_km = min(4, nrow(log2fc_rna_plot))
   )
+  
+  # Store results
+  all_model_results_final_degs[[combo]] <- all_model_results_final %>% 
+    filter(gene %in% rownames(log2fc_rna_plot)) %>% 
+    distinct(acr_id, gene)
+    
+  message(sprintf("Finished processing for %s. Plotted %d genes.\n", combo, nrow(log2fc_rna_plot)))
 }
