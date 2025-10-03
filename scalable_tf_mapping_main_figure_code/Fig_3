@@ -17,34 +17,22 @@
 # --- 1. LOAD LIBRARIES ---
 # Suppress package startup messages for a cleaner console output.
 suppressPackageStartupMessages({
-  # Core data manipulation and plotting
   library(tidyverse)
   library(data.table)
-  
-  # Genomics and annotation
   library(GenomicRanges)
   library(TxDb.Hsapiens.UCSC.hg38.knownGene)
   library(org.Hs.eg.db)
-  
-  # Parallel processing and progress bars
   library(future)
   library(future.apply)
   library(progressr)
-  
-  # Statistical modeling
   library(broom)
-  
-  # Advanced visualization
   library(ComplexHeatmap)
   library(circlize)
   library(viridis)
   library(scales)
   library(eulerr)
-  library(grid) # For advanced heatmap graphical parameters
-
-  # Permutation testing for genomic regions
-  # NOTE: Ensure the 'regioneR' package is installed to use 'overlapPermTest'.
-  # library(regioneR) 
+  library(grid) 
+  library(regioneR) 
 })
 
 # --- 2. DEFINE FILE PATHS AND DIRECTORIES ---
