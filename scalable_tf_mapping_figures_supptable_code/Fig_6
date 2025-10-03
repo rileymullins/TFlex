@@ -339,13 +339,97 @@ gene_sets_df <- map_dfr(tf_combos, function(tf_subset) {
 # Define a function to plot log2FC heatmaps.
 color_fun_rna <- colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B"))
 interesting_genes_list <- unique(sort(c("GZMA", "GZMB", "PDCD1", "TIGIT", "RUNX3", "FAS", "PRDM1", "LEF1", "BACH2", "ID2", "IFNG", "TCF7", "TOX", "LAG3")))
-plot_log2fc_heatmap <- function(mat, out_prefix, interesting_genes, row_km = 4, color_function) {
-  mat_for_clustering <- pmax(pmin(na.omit(as.matrix(mat)), 1), -1)
-  if (nrow(mat_for_clustering) < row_km) row_km <- nrow(mat_for_clustering)
+# Function to plot log2fc
+plot_log2fc_heatmap <- function(mat, out_prefix, plot_title, 
+                                interesting_genes, row_km = 4, 
+                                color_function) {
+  # --- Prepare matrix ---
+  mat_for_clustering <- as.matrix(mat)
+  mat_for_clustering[is.na(mat_for_clustering)] <- 0
+  mat_for_clustering <- pmax(pmin(mat_for_clustering, 1), -1)
+
+  # --- Perform clustering ---
   set.seed(123)
-  km_row_assign <- kmeans(mat_for_clustering, centers = row_km, nstart = 25)$cluster
-  # (Full function logic is complex and preserved from the original script)
+  row_km_ctrs <- min(row_km, nrow(mat_for_clustering))
+  km_row_assign <- kmeans(mat_for_clustering, centers = row_km_ctrs,
+                          nstart = 25, iter.max = 50)$cluster
+
+  # --- Optional: order row clusters by "JUN.FOS.BATF" mean ---
+  cluster_means <- tapply(mat_for_clustering[, "JUN.FOS.BATF"], km_row_assign, mean)
+  cluster_order <- order(cluster_means, decreasing = TRUE)
+  km_row_assign <- factor(km_row_assign, levels = cluster_order)
+
+  # --- Reorder rows by cluster assignment ---
+  order_idx <- order(km_row_assign)
+  mat_ordered <- mat_for_clustering[order_idx, , drop = FALSE]
+  km_split_vector <- km_row_assign[order_idx]
+
+  # --- Only label interesting_genes present in this matrix ---
+  interesting_genes_present <- intersect(interesting_genes, rownames(mat_ordered))
+  if (length(interesting_genes_present) > 0) {
+    idx <- match(interesting_genes_present, rownames(mat_ordered))
+    ha <- rowAnnotation(
+      mark = anno_mark(
+        at = idx,
+        labels = interesting_genes_present,
+        labels_gp = gpar(fontsize = 7),
+        padding = unit(2, "mm")
+      ),
+      annotation_name_side = "top"
+    )
+  } else {
+    ha <- NULL
+  }
+
+  # --- Build the heatmap ---
+  ht <- Heatmap(
+    mat_ordered,
+    name                  = plot_title,
+    col                   = color_function,
+    row_split             = km_split_vector,
+    column_split          = colnames(mat_ordered), # <-- ADDED THIS LINE
+    cluster_rows          = TRUE,
+    cluster_row_slices    = FALSE,
+    cluster_columns       = FALSE,
+    right_annotation      = ha,
+    show_row_dend         = FALSE,
+    show_row_names        = FALSE,
+    row_gap               = unit(0.75, "mm"),
+    column_gap            = unit(0.75, "mm"),
+    border                = "black",
+    row_title             = NULL,
+    column_title          = NULL,
+    column_names_gp       = gpar(fontsize = 8, fontface = "bold"),
+    heatmap_legend_param  = list(
+      title     = "Log2FC",
+      title_gp  = gpar(fontsize = 7, fontface = "bold"),
+      labels_gp = gpar(fontsize = 7),
+      at        = c(-1, 0, 1),
+      labels    = c("≤-1", "0", "≥1")
+    )
+  )
+
+  # --- Save plots ---
+  png(paste0(out_prefix, ".png"), width = 2.75, height = 5, units = "in", res = 300)
+  ComplexHeatmap::draw(ht)
+  dev.off()
+
+  pdf(paste0(out_prefix, ".pdf"), width = 2.75, height = 5)
+  ComplexHeatmap::draw(ht)
+  dev.off()
+
+  cat("Saved Log2FC heatmap to:", out_prefix, "\n")
+  
+  # --- Return debug info ---
+  return(list(
+    total_genes_plotted = nrow(mat_ordered),
+    interesting_genes_requested = length(interesting_genes),
+    interesting_genes_found = length(interesting_genes_present),
+    interesting_genes_labeled = interesting_genes_present
+  ))
 }
+
+
 
 # Generate heatmaps for specific TF combinations.
 combo_to_filter <- c("JUN_JUN.FOS.BATF", "BATF_JUN.FOS.BATF", "JUN_BATF_JUN.FOS.BATF")
