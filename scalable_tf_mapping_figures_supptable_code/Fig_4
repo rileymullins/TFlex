@@ -1,5 +1,5 @@
 #==================================================================================================
-# R SCRIPT FOR FIGURE 4 ANALYSIS
+# R SCRIPT FOR FIGURE 4 ANALYSIS (Updated file paths to be generalizable. Simplified code.) 
 # DATE: October 03, 2025
 #
 # DESCRIPTION:
@@ -7,10 +7,10 @@
 # a detailed regulon and gene program analysis. The key steps include:
 # 1.  Loading and filtering the scRNA-seq data to create a Seurat object.
 # 2.  Generating metacells to create robust expression profiles.
-# 3.  Calculating proportionality (rho) between TFs and target genes to define regulons.
-# 4.  Calculating module scores for the identified regulons.
-# 5.  Performing Non-Negative Matrix Factorization (NMF) to discover underlying gene programs.
-# 6.  Visualizing results through heatmaps, dimension plots, and similarity matrices.
+# 3.  Calculating proportionality (rho) between TFs and target genes to define regulons using metacells.
+# 4.  Calculating module scores for the identified regulons using metacells.
+# 5.  Performing Non-Negative Matrix Factorization (NMF) to discover underlying gene programs using metacells.
+# 6.  Visualizing results through heatmaps, dimension plots, and similarity matrices using metacells.
 #==================================================================================================
 
 # --- 1. LOAD LIBRARIES ---
