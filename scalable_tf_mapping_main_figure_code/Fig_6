@@ -5,23 +5,23 @@
 #---------------------------------------------------------
 # Load Required Libraries
 #---------------------------------------------------------
-library(data.table)      # Efficient data loading and manipulation
-library(dplyr)           # Data wrangling
-library(ggplot2)         # Plotting
-library(stringr)         # String manipulation
-library(janitor)         # Clean column names
-library(tidytext)        # For tidy text and reorder_within
-library(tidyr)           # Data tidying
-library(ComplexHeatmap)  # Advanced heatmaps
-library(circlize)        # Color palettes for heatmaps
-library(GenomicRanges)   # Genomic interval representation
-library(DESeq2)          # Differential expression analysis
-library(purrr)           # Functional programming (map)
-library(AnnotationDbi)   # Annotation mapping
+library(data.table)     
+library(dplyr)         
+library(ggplot2)         
+library(stringr)        
+library(janitor)       
+library(tidytext)       
+library(tidyr)          
+library(ComplexHeatmap) 
+library(circlize)       
+library(GenomicRanges)  
+library(DESeq2)         
+library(purrr)           
+library(AnnotationDbi)   
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(org.Hs.eg.db)
-library(viridis)         # Color palettes
-library(tibble)          # Tibbles and column_to_rownames
+library(viridis)         
+library(tibble)          
 
 #---------------------------------------------------------
 # Define File Paths
