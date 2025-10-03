@@ -15,7 +15,6 @@
 #==================================================================================================
 
 # --- 1. LOAD LIBRARIES ---
-# Suppress package startup messages for a cleaner console output.
 suppressPackageStartupMessages({
   library(tidyverse)
   library(data.table)
@@ -36,7 +35,6 @@ suppressPackageStartupMessages({
 })
 
 # --- 2. DEFINE FILE PATHS AND DIRECTORIES ---
-# Define generalizable input and output directories.
 input_dir <- "./input"
 output_dir <- "./output"
 figdir <- file.path(output_dir, "figures")
