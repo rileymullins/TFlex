@@ -4,7 +4,7 @@
 #
 # DESCRIPTION:
 # This script performs a comparative analysis of binding sites and target gene effects for
-# JUN, FOSL1, BATF, and a domain-swapped TF (JUN.FOS.BATF). The analysis includes:
+# JUN, FOSL1, BATF, and a DESynR domain-swapped TF (JUN.FOS.BATF). The analysis includes:
 # 1.  Motif enrichment analysis of HOMER results for each TF.
 # 2.  Heatmap visualization of normalized peak signals across TFs to identify co-binding patterns.
 # 3.  Quantification and plotting of peak counts for various TF binding combinations.
