@@ -27,8 +27,6 @@ suppressPackageStartupMessages({
 })
 
 # --- 2. DEFINE FILE PATHS AND DIRECTORIES ---
-# Define input and output directories using environment variables for portability.
-# If the environment variable is not set, a default local path ("./input" or "./output") is used.
 input_dir <- Sys.getenv("PEAK_ANALYSIS_INPUT_DIR", unset = "./input")
 output_dir <- Sys.getenv("PEAK_ANALYSIS_OUTPUT_DIR", unset = "./output")
 figdir <- file.path(output_dir, "figures") # Subdirectory for saving plots
