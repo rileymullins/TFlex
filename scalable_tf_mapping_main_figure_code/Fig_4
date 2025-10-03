@@ -1,5 +1,10 @@
+# Figure 4
+# October 03, 2025
+# Description: Make metacells from filtered scRNA-seq atlas (Xue, Z., Wu, L., Tian, R. et al. Integrative mapping of human CD8+ T cells in inflammation and cancer. Nat Methods 22, 435–445 (2025). https://doi.org/10.1038/s41592-024-02530-0)
+# Find bound and positively associated TF bound genes and plot as module score.
+# Define co-bound gene programs by NMF and plot per gene as a heatmap and as a module score.
 
-# Figure 4 analysis: Generalizable, annotated, executable R code
+
 
 # ---------- Directories ----------
 python_output_dir <- "YOUR_DATA_DIR"  # Set your root data directory here
