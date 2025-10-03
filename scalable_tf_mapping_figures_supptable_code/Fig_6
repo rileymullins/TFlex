@@ -59,7 +59,7 @@ engreitz_pairs_file <- file.path(base_dir, <Supplementary table 2 path>) # ENCOD
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
-# --- 3. MOTIF ENRICHMENT ANALYSIS AND PLOTTING ---
+# --- 3. HOMER MOTIF ENRICHMENT PLOTTING ---
 # Find all HOMER known motif result files recursively.
 motif_result_files <- list.files(motif_dir, pattern = "knownResults.txt", recursive = TRUE, full.names = TRUE)
 
