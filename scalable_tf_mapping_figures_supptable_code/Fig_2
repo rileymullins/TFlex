@@ -195,39 +195,12 @@ go_list <- map2(genes_per_group, names(genes_per_group), function(genes, group_n
 # Combine all GO results into a single data frame.
 all_res <- bind_rows(lapply(go_list, function(x) if (!is.null(x)) x@result else NULL))
 
-# Function to select top N unique pathways based on Jaccard similarity to reduce redundancy.
-select_top_unique_pathways <- function(df, top_n = 3, max_jaccard = 0.8) {
-  selected_pathways <- list()
-  selected_indices <- integer()
-  # Split the geneID string into lists of genes for similarity calculation.
-  gene_lists <- str_split(df$geneID, pattern = "/|,|;")
-  
-  for (i in seq_len(nrow(df))) {
-    current_genes <- gene_lists[[i]]
-    if (length(selected_pathways) == 0) {
-      selected_pathways <- list(current_genes)
-      selected_indices <- c(selected_indices, i)
-    } else {
-      # Calculate Jaccard similarity against already selected pathways.
-      similarities <- map_dbl(selected_pathways, ~ length(intersect(current_genes, .x)) / length(union(current_genes, .x)))
-      # Add the pathway if it is not too similar to any already selected ones.
-      if (all(similarities < max_jaccard)) {
-        selected_pathways <- append(selected_pathways, list(current_genes))
-        selected_indices <- c(selected_indices, i)
-      }
-    }
-    if (length(selected_pathways) == top_n) break # Stop when N pathways are selected.
-  }
-  df[selected_indices, ]
-}
-
-# Apply the function to get the top unique pathways per group.
+# Get top terms by qvalue
 top_clusters <- all_res %>%
   filter(qvalue < 0.05) %>%
   group_by(group) %>%
   arrange(qvalue) %>%
-  group_split() %>%
-  map_dfr(~ select_top_unique_pathways(.x, top_n = 3, max_jaccard = 0.8)) %>%
+  slice_head(n=3) %>%
   dplyr::mutate(neg_log_fdr = -log10(qvalue))
 
 # Recode long GO term descriptions to shorter labels for plotting.
