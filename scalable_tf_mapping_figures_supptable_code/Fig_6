@@ -43,9 +43,9 @@ motif_dir <- file.path(base_dir, "HOMER/HOMER_motif_analysis")
 norm_peak_matrix_file <- file.path(base_dir, "normalized_peak_matrices/combined_long_format_normalized_peak_matrix.csv")
 output_dir <- file.path(base_dir, "OUTPUT_DIR")
 fig_dir <- file.path(output_dir, "FIGS_DIR")
-all_sig_file <- file.path(base_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
+peaks_file <- file.path(base_dir, "HOMER_annotations_COMBINED_all_Group_vs_Control_results.csv")
 specific_peaks_file <- file.path(base_dir, "group_specific_peaks_summary.csv")
-rna_dds_file <- file.path(base_dir, "RNA_dds.rds") 
+rna_dds_file <- file.path(base_dir, "RNA_dds.rds")  # From Oliver Takacsi-Nagy, et. al., bioRxiv 2024.11.06.622344; doi: https://doi.org/10.1101/2024.11.06.622344
 engreitz_pairs_file <- file.path(base_dir, <Supplementary table 2 path>) # ENCODE-rE2G annotations (supplementary table 2) 
 
 # Create output directories if they do not already exist.
@@ -121,7 +121,7 @@ ggsave(file.path(fig_dir, "homer_top_motifs_plot_filtered_to_top3_bzip.pdf"),
 
 # --- 4. HEATMAP OF JUN, FOSL1, AND BATF PEAK SIGNALS ---
 # Load peak data and normalized peak signal matrix.
-all_sig <- fread(all_sig_file)
+all_sig <- fread(peaks_file)
 jfb_peaks <- all_sig %>% filter(group %in% c("JUN.FOS.BATF", "JUN", "FOSL1", "BATF")) %>% pull(peak_id)
 
 combined_norm_matrix <- fread(norm_peak_matrix_file, nThread = 10)
@@ -329,7 +329,7 @@ ggsave(file.path(fig_dir, "JUN.FOS.BATF_combos_only_total_peaks_per_combination.
 dt <- fread(engreitz_pairs_file) %>% distinct(enh_coord, chr, start, end, gene_name)
 se_rna <- readRDS(rna_dds_file); rna_mat <- assay(se_rna)
 tf_groups <- toupper(c("BATF", "JUN", "JUN.FOS.BATF"))
-annot <- fread(all_sig_file) %>% mutate(group = toupper(group))
+annot <- fread(peaks_file) %>% mutate(group = toupper(group))
 make_gr <- function(df) makeGRangesFromDataFrame(df %>% separate(peak_id, into = c("chr", "start", "end"), sep = "[:-]", convert = TRUE), keep.extra.columns = TRUE)
 gr_list <- lapply(tf_groups, function(tf) make_gr(annot %>% filter(group == tf)))
 names(gr_list) <- tf_groups
