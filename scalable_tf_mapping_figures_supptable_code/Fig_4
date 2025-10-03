@@ -3,7 +3,7 @@
 # DATE: October 03, 2025
 #
 # DESCRIPTION:
-# This script processes a public single-cell RNA-seq atlas of CD8+ T cells to perform
+# This script processes the public single-cell RNA-seq atlas of CD8+ T cells to perform
 # a detailed regulon and gene program analysis. The key steps include:
 # 1.  Loading and filtering the scRNA-seq data to create a Seurat object.
 # 2.  Generating metacells to create robust expression profiles.
@@ -14,7 +14,6 @@
 #==================================================================================================
 
 # --- 1. LOAD LIBRARIES ---
-# Suppress package startup messages for a cleaner console output.
 suppressPackageStartupMessages({
   library(Seurat)
   library(hdWGCNA) 
@@ -33,8 +32,6 @@ suppressPackageStartupMessages({
 allowWGCNAThreads(nThreads = 12)
 
 # --- 2. DEFINE FILE PATHS AND DIRECTORIES ---
-# Define a single base directory for portability. All other paths are relative to this.
-# Update this path to the root of the project directory.
 base_dir <- "/path/to/your/project/directory" 
 
 # Construct input and output directories from the base path.
