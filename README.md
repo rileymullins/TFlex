@@ -70,7 +70,7 @@ This is a processing pipeline that combines SRT barcode correction and assignmen
 
 **Major steps:**
 
-1. Input loading, sample barcode correction, annotation, and per-sample partitioning.  
+1. Sample barcode correction, annotation, and per-sample partitioning.  
 2. For each sample:  
    a. Fragment-based peak calling with CCaller through pyCallingCards to identify regions of interest.
       - Fragment-based peak calling served to identify regions of insertions to make the assignments of each SRT barcode to the single fragment coordinate that is most proximal to the transposon.
