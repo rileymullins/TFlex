@@ -58,8 +58,7 @@ The method is a pooled, antibody-independent method to map TFs. Because both the
 4. **Demultiplexing:** Post-sequencing, reads are assigned to their original samples based on the sample barcode.  
 5. **Mapping:** The unique transposon insertion sites are identified by their genomic coordinates and the SRT barcode.
 
-**Schematic of TFlex:**
-[TFlex.tiff](https://github.com/user-attachments/files/22176805/paint-seq-schematic.tiff)
+
 
 
 ---
