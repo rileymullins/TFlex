@@ -844,7 +844,6 @@ if (length(promoter_bound_genes_homer) > 0) {
 # Combine all processed annotation files into one dataframe
 combined_annotations <- bind_rows(processed_annotations_per_group)
 
-# (Confirmation checks removed for neatness)
 
 # Join annotations to the significant 'vs. Control' results
 all_sig_annots <- left_join(all_sig, combined_annotations, by = c("peak_id", "group")) %>%
