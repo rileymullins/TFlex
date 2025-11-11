@@ -268,7 +268,7 @@ run_all_comparisons_for_group <- function(current_group, all_groups, control_gro
 # ==============================================================================
 # PART 3: EXECUTE PARALLEL ANALYSIS
 # ==============================================================================
-cat("Starting differential analyses in parallel (PSOCK cluster)...\n")
+cat("Starting differential analyses in parallel\n")
 num_cores <- max(1, parallel::detectCores() - 1)
 
 # 1. Create a socket cluster
