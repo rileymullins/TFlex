@@ -463,7 +463,6 @@ specific_peaks_with_counts <- all_specific_peaks %>%
     by = c("peak_id", "specific_for_group" = "source_group")
   )
 
-# (Debugging lines removed)
 
 # 2. Pivot data to create a wide matrix
 final_summary_df <- specific_peaks_with_counts %>%
